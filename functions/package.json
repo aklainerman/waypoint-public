@@ -1,0 +1,9 @@
+{
+  "name": "waypoint-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Netlify serverless functions for Waypoint (config bridge, Scout LLM endpoints, Hill sync).",
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

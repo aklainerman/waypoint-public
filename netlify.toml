@@ -1,0 +1,52 @@
+# Waypoint Netlify config — shared by all three sites (prod, stage, demo).
+#
+# Environment differentiation is per-site, set in Netlify UI > Site settings
+# > Environment variables. The mandatory contract:
+#
+#   WAYPOINT_ENV          one of "prod" | "stage" | "demo"
+#   SUPABASE_URL          https://<project>.supabase.co
+#   SUPABASE_ANON_KEY     publishable / anon key for the project above
+#
+# Prod + Stage also need (used by scout-* and scout-apollo-phone-webhook):
+#   ANTHROPIC_API_KEY, APOLLO_API_KEY, APOLLO_WEBHOOK_TOKEN, SAM_GOV_API_KEY (optional)
+#
+# Demo deliberately omits Anthropic/Apollo keys. Scout functions also short-
+# circuit at handler entry when WAYPOINT_ENV=demo (belt + suspenders).
+
+[build]
+  functions = "functions"
+  publish   = "."
+
+# Nightly Hill Ops sync. Public Congress data, safe to run on all three
+# environments (Demo benefits from fresh member photos / committee rosters).
+# To run sync manually instead, delete the schedule line and use the
+# "Sync now" button on the Hill Ops tab.
+[functions."hill-sync"]
+  schedule = "@daily"
+
+# Per-context env defaults. Each Netlify site overrides WAYPOINT_ENV in its
+# own env-var dashboard; this block is just a safety net for branch deploys.
+[context.production.environment]
+  NODE_ENV = "production"
+
+[context.deploy-preview.environment]
+  NODE_ENV = "production"
+
+[context.branch-deploy.environment]
+  NODE_ENV = "production"
+
+# Security headers. Demo is public, so these matter especially there.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options          = "SAMEORIGIN"
+    X-Content-Type-Options   = "nosniff"
+    Referrer-Policy          = "strict-origin-when-cross-origin"
+    Permissions-Policy       = "geolocation=(), microphone=(), camera=()"
+
+# Don't let CDN cache the config endpoint — env vars must apply immediately
+# on key rotation.
+[[headers]]
+  for = "/.netlify/functions/config"
+  [headers.values]
+    Cache-Control = "no-store"

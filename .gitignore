@@ -1,0 +1,83 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Netlify CLI state
+.netlify/
+
+# Environment / secrets (envs are configured per-site in Netlify dashboard).
+# .env.example is the committed template — keep it tracked.
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+secrets.json
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.bak
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Logs / scratch
+*.log
+*.tmp
+scratch/
+tmp/
+out/
+dist/
+build/
+
+# Large data files — keep in Supabase storage bucket `budget-jbooks`, not in git
+*.pdf
+uploads/
+"Budget J-Books/"
+
+# Sensitive: outreach data backups must never enter git, public or private
+"Supabase Backups/"
+contacts_*.csv
+solicitations_*.csv
+letters_*.csv
+offices_*.csv
+
+# Per-version dashboard snapshots (replaced by git tags)
+netlify_v*/
+Archive/
+
+# Playwright (v232 smoke harness)
+playwright-report/
+test-results/
+/playwright/.cache/
+
+# v241: top-level scratch patterns
+*.head
+.test_*
+_COMMIT_MSG.txt
+_TO_DELETE.txt
+
+# Local one-shot verification / smoke / build scripts that shouldn't
+# ship in the snapshot. Prefix with `_verify_`, `_smoke_`, or `_build_`
+# to opt in to ignore.
+_verify_*.ps1
+_verify_*.py
+_verify_*.sh
+_smoke_*.ps1
+_smoke_*.py
+_build_*.py
+_build_*.ps1
+_build_*.sh
