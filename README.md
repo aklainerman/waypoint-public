@@ -1,4 +1,4 @@
-# Waypoint — DoD Budget + Outreach CRM Template
+# Waypoint — DoW CRM + Budget App
 
 A frozen snapshot from a working production app. Not maintained.
 
