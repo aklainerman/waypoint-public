@@ -413,7 +413,18 @@ function openContactDetailPanel(contactId) {
 
   // -- Body: per-office sections --
   let html = '';
-  if (offices.length === 0) {
+  if (contact.photoUrl) {
+    html += '<div style="text-align:center;margin-bottom:14px;">'
+      + '<img src="' + escHtml(contact.photoUrl) + '" alt="" '
+      + 'onerror="this.style.display=\'none\'" '
+      + 'style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid var(--border);background:var(--surface-alt);">'
+      + (contact.org && !offices.length ? '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">' + escHtml(contact.org) + '</div>' : '')
+      + '</div>';
+  } else if (contact.org && !offices.length) {
+    html += '<div class="rel-block"><div class="detail-label" style="margin-bottom:4px;">Org</div>'
+      + '<div style="font-size:13px;">' + escHtml(contact.org) + '</div></div>';
+  }
+  if (offices.length === 0 && !contact.org) {
     html += '<div class="rel-block"><div style="color:var(--text-muted);">No offices linked to this contact.</div></div>';
   } else {
     offices.forEach(office => {

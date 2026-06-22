@@ -87,7 +87,7 @@ function renderContacts() {
     + '<td>' + escHtml(c.callsign||'') + '</td>'
     + '<td>' + escHtml(c.rank||'') + '</td>'
     + '<td>' + escHtml(c.title||'') + '</td>'
-    + '<td>' + orgCells(c.officeIds, c.legislator_bioguide_id) + '</td>'
+    + '<td>' + orgCells(c.officeIds, c.legislator_bioguide_id, c.org) + '</td>'
     + '<td>' + deptBadge(contactDepartment(c)) + '</td>'
     + '<td>' + (c.email ? '<a href="mailto:' + escHtml(c.email) + '">' + escHtml(c.email) + '</a>' : '—') + '</td>'
     + '<td>' + escHtml(c.phone||'—') + '</td>'
@@ -128,7 +128,7 @@ function legislatorSearchHay(c) {
 }
 
 function editContact(id) {
-  const c = id ? Object.assign({}, DB.get('contacts', id)) : { id:'', firstName:'', lastName:'', callsign:'', rank:'', title:'', email:'', phone:'', linkedinUrl:'', officeIds:[], legislator_bioguide_id:'', unit:'', branch:'', source:'', lead:'', notes:'' };
+  const c = id ? Object.assign({}, DB.get('contacts', id)) : { id:'', firstName:'', lastName:'', callsign:'', rank:'', title:'', email:'', phone:'', linkedinUrl:'', org:'', photoUrl:'', officeIds:[], legislator_bioguide_id:'', unit:'', branch:'', source:'', lead:'', notes:'' };
   const body = document.createElement('div');
   body.appendChild(fieldRow(
     field('First Name', '<input id="f-firstName" value="' + escHtml(c.firstName) + '">'),
@@ -144,6 +144,8 @@ function editContact(id) {
     field('Phone', '<input id="f-phone" value="' + escHtml(c.phone||'') + '">')
   ));
   body.appendChild(field('LinkedIn URL', '<input id="f-linkedinUrl" type="url" value="' + escHtml(c.linkedinUrl||'') + '" placeholder="https://linkedin.com/in/...">'));
+  body.appendChild(field('Org / Organization', '<input id="f-org" value="' + escHtml(c.org||'') + '" placeholder="e.g. AFRL, OSD, DARPA, Boeing">'));
+  body.appendChild(field('Photo URL', '<input id="f-photoUrl" type="url" value="' + escHtml(c.photoUrl||'') + '" placeholder="https://...">'));
   // values are independent (a contact may carry both a DoW org AND a
   // Hill principal); the toggle only controls which picker is visible.
   const linkField = field('Link to', '', 'Toggle between DoW orgs and Congress members. Both can be set; current selections are preserved when you switch.');
@@ -228,6 +230,8 @@ function editContact(id) {
         email:     document.getElementById('f-email').value.trim(),
         phone:     document.getElementById('f-phone').value.trim(),
         linkedinUrl: document.getElementById('f-linkedinUrl').value.trim(),
+        org:         document.getElementById('f-org').value.trim(),
+        photoUrl:    document.getElementById('f-photoUrl').value.trim(),
         officeIds: officeMS.get(),
         legislator_bioguide_id: legSS.get() || null,   // v167
         unit:      c.unit || '',     // preserved; field removed in v16
@@ -251,7 +255,7 @@ document.getElementById('btnAddContact').addEventListener('click', () => editCon
 attachSorting(document.getElementById('contactsTable'), 'contacts', renderContacts);
 
 document.getElementById('btnExportContacts').addEventListener('click', () => {
-  const headers = ['id','firstName','lastName','callsign','rank','title','department','email','phone','linkedinUrl','officeIds','officeNames','legislator_bioguide_id','legislatorLabel','branch','source','lead','champion','notes'];
+  const headers = ['id','firstName','lastName','callsign','rank','title','department','email','phone','linkedinUrl','org','photoUrl','officeIds','officeNames','legislator_bioguide_id','legislatorLabel','branch','source','lead','champion','notes'];
   const visible = currentTableRows('contactsTable', DB.list('contacts'));
   const rows = visible.map(c => Object.assign({}, c, {
     department: contactDepartment(c),
@@ -273,6 +277,8 @@ document.getElementById('btnImportContacts').addEventListener('click', () => {
     email:     row.email || row.Email || '',
     phone:     row.phone || row.Phone || '',
     linkedinUrl: row.linkedinUrl || row['LinkedIn'] || row['LinkedIn URL'] || row.linkedin || '',
+    org:       row.org || row.Org || row.Organization || row['Org / Organization'] || '',
+    photoUrl:  row.photoUrl || row['Photo URL'] || row.photo || '',
     officeIds: arrField(row.officeIds || row.Offices || ''),
     legislator_bioguide_id: (row.legislator_bioguide_id || row['Legislator BioguideId'] || row.bioguide_id || '').trim() || null,  // v167
     unit:      row.unit || row.Unit || row['Unit/HHQ'] || row['Unit / HHQ'] || '',

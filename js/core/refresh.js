@@ -125,10 +125,13 @@ function orgCell(officeId) {
   if (!o) return '<span class="org-cell">—</span>';
   return '<span class="org-cell" data-office-jump="' + o.id + '">' + escHtml(o.name || '') + '</span>';
 }
-function orgCells(officeIds, legislatorBg) {
+function orgCells(officeIds, legislatorBg, fallbackOrg) {
   const ids = (officeIds || []).filter(Boolean);
   const legChip = legislatorChipHtml(legislatorBg);
-  if (!ids.length && !legChip) return '<span class="org-cell">—</span>';
+  if (!ids.length && !legChip) {
+    if (fallbackOrg) return '<span class="org-cell">' + escHtml(fallbackOrg) + '</span>';
+    return '<span class="org-cell">—</span>';
+  }
   const parts = [];
   ids.forEach(id => {
     const o = DB.get('offices', id);
