@@ -146,11 +146,7 @@ function editContact(id) {
   body.appendChild(field('LinkedIn URL', '<input id="f-linkedinUrl" type="url" value="' + escHtml(c.linkedinUrl||'') + '" placeholder="https://linkedin.com/in/...">'));
   body.appendChild(fieldRow(
     field('Org / Organization', '<input id="f-org" value="' + escHtml(c.org||'') + '" placeholder="e.g. AFRL, OSD, DARPA, Boeing">'),
-    field('Department', '<select id="f-department">'
-      + ['','Air Force','Army','Navy','Marines','SOCOM','OSD','Joint','Congress','Other'].map(d =>
-          '<option value="' + escHtml(d) + '"' + ((c.department||'') === d ? ' selected' : '') + '>' + (d || '— select —') + '</option>'
-        ).join('')
-      + '</select>')
+    field('Department', '<input id="f-department" value="' + escHtml(c.department||'') + '" placeholder="e.g. Directed Energy, S&T, Acquisitions">')
   ));
   // Photo: file upload (uploads to Supabase storage on save) or keep existing URL
   let _pendingPhotoFile = null;
