@@ -46,6 +46,8 @@ function officeDepartmentById(officeId) {
   return o ? (o.service || '') : '';
 }
 function contactDepartment(c) {
+  // Direct department field wins (set via the Department dropdown in the form).
+  if (c && c.department) return c.department;
   // who works for a senator is fundamentally a Hill person, even if they
   // also liaise with a DoW org on the side. Resolve to 'Congress' before
   // falling through to the office check. This makes the DEPT badge

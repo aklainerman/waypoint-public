@@ -144,8 +144,47 @@ function editContact(id) {
     field('Phone', '<input id="f-phone" value="' + escHtml(c.phone||'') + '">')
   ));
   body.appendChild(field('LinkedIn URL', '<input id="f-linkedinUrl" type="url" value="' + escHtml(c.linkedinUrl||'') + '" placeholder="https://linkedin.com/in/...">'));
-  body.appendChild(field('Org / Organization', '<input id="f-org" value="' + escHtml(c.org||'') + '" placeholder="e.g. AFRL, OSD, DARPA, Boeing">'));
-  body.appendChild(field('Photo URL', '<input id="f-photoUrl" type="url" value="' + escHtml(c.photoUrl||'') + '" placeholder="https://...">'));
+  body.appendChild(fieldRow(
+    field('Org / Organization', '<input id="f-org" value="' + escHtml(c.org||'') + '" placeholder="e.g. AFRL, OSD, DARPA, Boeing">'),
+    field('Department', '<select id="f-department">'
+      + ['','Air Force','Army','Navy','Marines','SOCOM','OSD','Joint','Congress','Other'].map(d =>
+          '<option value="' + escHtml(d) + '"' + ((c.department||'') === d ? ' selected' : '') + '>' + (d || '— select —') + '</option>'
+        ).join('')
+      + '</select>')
+  ));
+  // Photo: file upload (uploads to Supabase storage on save) or keep existing URL
+  let _pendingPhotoFile = null;
+  const _photoPreviewId = 'f-photo-preview-' + Math.random().toString(36).slice(2);
+  const _photoInputId   = 'f-photo-input-'   + Math.random().toString(36).slice(2);
+  const photoWrap = document.createElement('div');
+  photoWrap.innerHTML = field('Photo', '').outerHTML;
+  const photoFieldEl = field('Photo',
+    (c.photoUrl ? '<img id="' + _photoPreviewId + '" src="' + escHtml(c.photoUrl) + '" style="width:64px;height:64px;border-radius:50%;object-fit:cover;display:block;margin-bottom:6px;">' : '')
+    + '<input type="file" id="' + _photoInputId + '" accept="image/*" style="font-size:12px;color:var(--text-dim);">'
+  );
+  body.appendChild(photoFieldEl);
+  // Wire preview on file select (after DOM is attached by openModal)
+  setTimeout(() => {
+    const inp = document.getElementById(_photoInputId);
+    if (!inp) return;
+    inp.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      _pendingPhotoFile = f;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        let prev = document.getElementById(_photoPreviewId);
+        if (!prev) {
+          prev = document.createElement('img');
+          prev.id = _photoPreviewId;
+          prev.style.cssText = 'width:64px;height:64px;border-radius:50%;object-fit:cover;display:block;margin-bottom:6px;';
+          inp.parentNode.insertBefore(prev, inp);
+        }
+        prev.src = ev.target.result;
+      };
+      reader.readAsDataURL(f);
+    });
+  }, 0);
   // values are independent (a contact may carry both a DoW org AND a
   // Hill principal); the toggle only controls which picker is visible.
   const linkField = field('Link to', '', 'Toggle between DoW orgs and Congress members. Both can be set; current selections are preserved when you switch.');
@@ -219,7 +258,7 @@ function editContact(id) {
   openModal({
     title: id ? 'Edit Contact · ' + (c.firstName + ' ' + c.lastName).trim() : 'Add Contact',
     body, table:'contacts', id: c.id || '',
-    onSave: () => {
+    onSave: async () => {
       const rec = {
         id: c.id || '',
         firstName: document.getElementById('f-firstName').value.trim(),
@@ -231,7 +270,8 @@ function editContact(id) {
         phone:     document.getElementById('f-phone').value.trim(),
         linkedinUrl: document.getElementById('f-linkedinUrl').value.trim(),
         org:         document.getElementById('f-org').value.trim(),
-        photoUrl:    document.getElementById('f-photoUrl').value.trim(),
+        department:  document.getElementById('f-department').value,
+        photoUrl:    c.photoUrl || '',
         officeIds: officeMS.get(),
         legislator_bioguide_id: legSS.get() || null,   // v167
         unit:      c.unit || '',     // preserved; field removed in v16
@@ -241,6 +281,17 @@ function editContact(id) {
         notes:     document.getElementById('f-notes').value.trim(),
       };
       if (!rec.lastName && !rec.firstName) { alert('At least a name is required.'); return; }
+      if (_pendingPhotoFile) {
+        try {
+          const contactId = rec.id || ('contact_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+          rec.id = rec.id || contactId;
+          const up = await uploadIntoLettersBucket('contact-photos', contactId, _pendingPhotoFile);
+          rec.photoUrl = up.url;
+        } catch (e) {
+          alert('Photo upload failed: ' + (e && e.message ? e.message : e));
+          return;
+        }
+      }
       DB.upsert('contacts', rec); closeModal(); refreshAll();
     }
   });
@@ -277,8 +328,9 @@ document.getElementById('btnImportContacts').addEventListener('click', () => {
     email:     row.email || row.Email || '',
     phone:     row.phone || row.Phone || '',
     linkedinUrl: row.linkedinUrl || row['LinkedIn'] || row['LinkedIn URL'] || row.linkedin || '',
-    org:       row.org || row.Org || row.Organization || row['Org / Organization'] || '',
-    photoUrl:  row.photoUrl || row['Photo URL'] || row.photo || '',
+    org:        row.org || row.Org || row.Organization || row['Org / Organization'] || '',
+    department: row.department || row.Department || '',
+    photoUrl:   row.photoUrl || row['Photo URL'] || row.photo || '',
     officeIds: arrField(row.officeIds || row.Offices || ''),
     legislator_bioguide_id: (row.legislator_bioguide_id || row['Legislator BioguideId'] || row.bioguide_id || '').trim() || null,  // v167
     unit:      row.unit || row.Unit || row['Unit/HHQ'] || row['Unit / HHQ'] || '',
