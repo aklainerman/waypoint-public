@@ -384,25 +384,15 @@ function openContactDetailPanel(contactId) {
   const titleParts = [];
   if (contact.rank) titleParts.push(contact.rank);
   titleParts.push(fullName || '(unnamed contact)');
-  if (contact.callsign) titleParts.push('“' + contact.callsign + '”');
+  if (contact.callsign) titleParts.push('”' + contact.callsign + '”');
   panelTitle.textContent = titleParts.join(' ');
+  panelSub.innerHTML = contact.title ? escHtml(contact.title) : '';
 
-  const subBits = [];
-  if (contact.title) subBits.push(escHtml(contact.title));
-  if (contact.email) subBits.push('<a href="mailto:' + escHtml(contact.email) + '" style="color:inherit;">' + escHtml(contact.email) + '</a>');
-  if (contact.phone) subBits.push('<a href="tel:' + escHtml(contact.phone) + '" style="color:inherit;">' + escHtml(contact.phone) + '</a>');
-  if (contact.linkedinUrl) {
-    const lu = String(contact.linkedinUrl);
-    const luFull = /^https?:\/\//i.test(lu) ? lu : ('https://' + lu);
-    subBits.push('<a href="' + escHtml(luFull) + '" target="_blank" rel="noopener" style="color:inherit;">LinkedIn</a>');
-  }
-  panelSub.innerHTML = subBits.join(' · ');
-
-  // Badges: champion star + office chips + (v167) legislator chip.
+  // Badges: champion star + office chips + legislator chip.
   const badges = [];
-  if (contact.champion) badges.push('<span class="pill" style="background:var(--priority-bg, #4d3a14);color:var(--priority, #f3b13c);">★ Champion</span>');
+  if (contact.champion) badges.push('<span class=”pill” style=”background:var(--priority-bg, #4d3a14);color:var(--priority, #f3b13c);”>★ Champion</span>');
   offices.forEach(o => {
-    badges.push('<a class="chip chip-office" data-contact-office="' + escHtml(o.id) + '">' + escHtml(o.name || o.id) + '</a>');
+    badges.push('<a class=”chip chip-office” data-contact-office=”' + escHtml(o.id) + '”>' + escHtml(o.name || o.id) + '</a>');
   });
   if (contact.legislator_bioguide_id) {
     const _legBadge = legislatorChipHtml(contact.legislator_bioguide_id);
@@ -411,21 +401,60 @@ function openContactDetailPanel(contactId) {
   panelBadges.innerHTML = badges.join(' ');
   panelCounters.innerHTML = '';
 
-  // -- Body: per-office sections --
+  // -- Body --
   let html = '';
+
+  // ── Contact card ────────────────────────────────────────────
+  html += '<div class=”rel-block” style=”display:flex;gap:14px;align-items:flex-start;margin-bottom:4px;”>';
+  // Photo avatar
   if (contact.photoUrl) {
-    html += '<div style="text-align:center;margin-bottom:14px;">'
-      + '<img src="' + escHtml(contact.photoUrl) + '" alt="" '
-      + 'onerror="this.style.display=\'none\'" '
-      + 'style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:2px solid var(--border);background:var(--surface-alt);">'
-      + (contact.org && !offices.length ? '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">' + escHtml(contact.org) + '</div>' : '')
-      + '</div>';
-  } else if (contact.org && !offices.length) {
-    html += '<div class="rel-block"><div class="detail-label" style="margin-bottom:4px;">Org</div>'
-      + '<div style="font-size:13px;">' + escHtml(contact.org) + '</div></div>';
+    html += '<img src=”' + escHtml(contact.photoUrl) + '” alt=”” onerror=”this.style.display=\'none\'” '
+      + 'style=”width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;”>';
+  } else {
+    // Initials placeholder
+    const initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
+    html += '<div style=”width:72px;height:72px;border-radius:50%;background:var(--surface-alt);border:2px solid var(--border);'
+      + 'display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);flex-shrink:0;”>'
+      + escHtml(initials) + '</div>';
   }
+  // Info block
+  html += '<div style=”flex:1;min-width:0;”>';
+  if (contact.org || contact.department) {
+    html += '<div style=”font-size:12px;color:var(--text-muted);margin-bottom:6px;”>'
+      + escHtml([contact.org, contact.department].filter(Boolean).join(' · '))
+      + '</div>';
+  }
+  // Contact rows
+  const _contactRows = [];
+  if (contact.email) _contactRows.push(
+    '<div style=”display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:5px;”>'
+    + '<span style=”color:var(--text-muted);font-size:11px;width:40px;flex-shrink:0;”>EMAIL</span>'
+    + '<a href=”mailto:' + escHtml(contact.email) + '” style=”color:var(--accent);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;”>' + escHtml(contact.email) + '</a>'
+    + '</div>'
+  );
+  if (contact.phone) _contactRows.push(
+    '<div style=”display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:5px;”>'
+    + '<span style=”color:var(--text-muted);font-size:11px;width:40px;flex-shrink:0;”>PHONE</span>'
+    + '<a href=”tel:' + escHtml(contact.phone) + '” style=”color:var(--accent);text-decoration:none;”>' + escHtml(contact.phone) + '</a>'
+    + '</div>'
+  );
+  if (contact.linkedinUrl) {
+    const luFull = /^https?:\/\//i.test(contact.linkedinUrl) ? contact.linkedinUrl : ('https://' + contact.linkedinUrl);
+    _contactRows.push(
+      '<div style=”display:flex;align-items:center;gap:7px;font-size:13px;margin-bottom:5px;”>'
+      + '<span style=”color:var(--text-muted);font-size:11px;width:40px;flex-shrink:0;”>LI</span>'
+      + '<a href=”' + escHtml(luFull) + '” target=”_blank” rel=”noopener” style=”color:var(--accent);text-decoration:none;”>LinkedIn profile</a>'
+      + '</div>'
+    );
+  }
+  if (contact.notes) _contactRows.push(
+    '<div style=”font-size:12px;color:var(--text-muted);margin-top:4px;white-space:pre-wrap;line-height:1.4;”>' + escHtml(contact.notes) + '</div>'
+  );
+  html += _contactRows.join('') || '<div style=”color:var(--text-muted);font-size:12px;”>No contact details on file.</div>';
+  html += '</div></div>'; // close info + card
+
   if (offices.length === 0 && !contact.org) {
-    html += '<div class="rel-block"><div style="color:var(--text-muted);">No offices linked to this contact.</div></div>';
+    html += '<div class=”rel-block”><div style=”color:var(--text-muted);font-size:12px;”>No offices linked to this contact.</div></div>';
   } else {
     offices.forEach(office => {
       const otherContacts = DB.list('contacts')
