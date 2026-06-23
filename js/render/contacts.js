@@ -35,7 +35,7 @@
 const RANK_LIST = [
   // ── Army / Marine Corps / USSF / Air Force Officers (O1-O10) ──
   // O1-O6 shared across these branches; flag officers follow same pattern
-  '2nd LT','1st LT','Capt','Maj','Lt Col','Col',
+  '2nd LT','1st LT','Capt (O3)','Maj','Lt Col','Colonel',
   'Brig Gen','Maj Gen','Lt Gen','Gen','Gen of Army',
   // ── Army / Marine Corps Warrant Officers ───────────────────
   'WO1','CW2','CW3','CW4','CW5',
@@ -48,7 +48,7 @@ const RANK_LIST = [
   // ── Space Force Enlisted (Guardians) ──────────────────────
   'Spc1','Spc2','Spc3','Spc4','Sgt','TSgt','MSgt','SMSgt','CMSgt','CMSgT',
   // ── Navy / Coast Guard Officers (O1-O10) ───────────────────
-  'ENS','LTJG','LT','LTCDR','CDR','CAPT','RDML','RADM','VADM','ADM','FADM',
+  'ENS','LTJG','LT','LTCDR','CDR','CAPT (O6)','RDML','RADM','VADM','ADM','FADM',
   // ── Navy / Coast Guard Warrant ─────────────────────────────
   'CWO2','CWO3','CWO4','CWO5',
   // ── Navy / Coast Guard Enlisted ────────────────────────────
