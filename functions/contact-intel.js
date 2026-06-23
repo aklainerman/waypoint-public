@@ -65,6 +65,7 @@ Return a JSON object with this exact shape:
     "confidence": "high/medium/low",
     "caveat": "any caveats about accuracy — e.g. 'multiple officers with this name exist' or 'could not find specific info'"
   },
+  "engagementDate": "ISO date (YYYY-MM-DD) of the engagement/meeting if mentioned in the text, else empty string",
   "engagementNote": "cleaned-up version of the engagement/meeting note portion of the text, suitable for the contact's notes field",
   "questions": [
     {

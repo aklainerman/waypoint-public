@@ -429,6 +429,7 @@ function _showIntelResult(result, originalText) {
   const questions = result.questions || [];
   const engNote = result.engagementNote || '';
   const _scrapedPhoto = result.photoUrl || '';
+  const _engDateDefault = result.engagementDate || new Date().toISOString().slice(0, 10);
 
   // ── Dedup check before modal opens ─────────────────────────────
   const _exLast = (ex.lastName || '').trim().toLowerCase();
@@ -503,6 +504,10 @@ function _showIntelResult(result, originalText) {
     <div style="margin-bottom:10px;">
       <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Notes</label>
       <textarea id="ai-notes" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;">${escHtml(engNote)}</textarea>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Date</label>
+      <input id="ai-eng-date" type="date" value="${escHtml(_engDateDefault)}" style="font-size:13px;">
     </div>`);
 
   // ── Clarifying questions ────────────────────────────────────
@@ -560,7 +565,7 @@ function _showIntelResult(result, originalText) {
       DB.upsert('contacts', rec);
       const _noteText = (document.getElementById('ai-notes').value || '').trim();
       if (_noteText) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = (document.getElementById('ai-eng-date') || {}).value || new Date().toISOString().slice(0, 10);
         const _cid = rec.id || DB.list('contacts').find(c => c.lastName === rec.lastName && c.firstName === rec.firstName)?.id;
         if (_cid) {
           DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: _cid, engaged_at: today, notes: _noteText });
