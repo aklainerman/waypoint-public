@@ -500,17 +500,20 @@ function openContactDetailPanel(contactId) {
   }
   panelBody.innerHTML = html;
 
-  // -- Photo preload (inject only after confirmed load; avoids broken-img icon) --
+  // -- Photo preload: set as CSS background-image after confirmed load --
   if (contact.photoUrl) {
     const _preload = new Image();
     _preload.onload = () => {
       const _wrap = panelBody.querySelector('#' + _avatarId);
       if (!_wrap) return;
-      const _img = document.createElement('img');
-      _img.src = contact.photoUrl;
-      _img.alt = '';
-      _img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;';
-      _wrap.appendChild(_img);
+      _wrap.style.backgroundImage = 'url("' + contact.photoUrl.replace(/"/g, '%22') + '")';
+      _wrap.style.backgroundSize = 'cover';
+      _wrap.style.backgroundPosition = 'center';
+      const _initialsEl = _wrap.firstElementChild;
+      if (_initialsEl) _initialsEl.style.visibility = 'hidden';
+    };
+    _preload.onerror = () => {
+      console.warn('[Waypoint] contact photo failed to load:', contact.photoUrl);
     };
     _preload.src = contact.photoUrl;
   }
