@@ -431,54 +431,142 @@ function _showIntelResult(result, originalText) {
   const _scrapedPhoto = result.photoUrl || '';
   const _engDateDefault = result.engagementDate || new Date().toISOString().slice(0, 10);
 
-  // ── Dedup check before modal opens ─────────────────────────────
-  const _exLast = (ex.lastName || '').trim().toLowerCase();
+  // ── Find fuzzy matches in existing contacts ─────────────────
+  const _exLast  = (ex.lastName  || '').trim().toLowerCase();
   const _exFirst = (ex.firstName || '').trim().toLowerCase();
-  let _existingMatch = null;
+  const _matches = [];
   if (_exLast) {
-    const _hits = DB.list('contacts').filter(c => c.lastName && c.lastName.toLowerCase() === _exLast);
-    if (_hits.length === 1) {
-      _existingMatch = _hits[0];
-    } else if (_hits.length > 1 && _exFirst) {
-      _existingMatch = _hits.find(c => c.firstName && c.firstName.toLowerCase() === _exFirst) || _hits[0];
+    DB.list('contacts').forEach(c => {
+      const cLast  = (c.lastName  || '').toLowerCase();
+      const cFirst = (c.firstName || '').toLowerCase();
+      if (!cLast) return;
+      if (cLast === _exLast ||
+          cLast.includes(_exLast) || _exLast.includes(cLast) ||
+          (_exFirst && (cFirst === _exFirst || cFirst.includes(_exFirst) || _exFirst.includes(cFirst)))) {
+        _matches.push(c);
+      }
+    });
+  }
+  // Deduplicate by id
+  const _seen = new Set();
+  const _uniqueMatches = _matches.filter(c => _seen.has(c.id) ? false : (_seen.add(c.id), true));
+
+  // ── Helper: log engagement to a known contact id ────────────
+  function _logEngagement(contactId, noteText, dateStr) {
+    const engId = 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    DB.upsert('engagements', { id: engId, contact_id: contactId, engaged_at: dateStr, notes: noteText });
+    const c = DB.get('contacts', contactId);
+    if (c && (!c.last_engaged_at || dateStr > c.last_engaged_at)) {
+      DB.upsert('contacts', Object.assign({}, c, { last_engaged_at: dateStr }));
     }
   }
 
+  // ── STEP 1: if matches exist, show picker first ─────────────
+  if (_uniqueMatches.length > 0) {
+    _showEngagementPicker(_uniqueMatches, engNote, _engDateDefault, result, originalText);
+    return;
+  }
+
+  // ── STEP 2: no match — show new contact form ────────────────
+  _showNewContactForm(result, ex, enr, questions, engNote, _engDateDefault, _scrapedPhoto);
+}
+
+function _showEngagementPicker(matches, engNote, engDate, result, originalText) {
   const body = document.createElement('div');
 
-  // ── Enrichment banner ───────────────────────────────────────
+  body.insertAdjacentHTML('beforeend',
+    '<div style="font-size:13px;color:var(--text);margin-bottom:12px;">Who did you meet with? Select a contact to log this engagement, or create a new one.</div>');
+
+  // Note + date fields (shared regardless of which contact is selected)
+  body.insertAdjacentHTML('beforeend', `
+    <div style="margin-bottom:8px;">
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Notes</label>
+      <textarea id="ai-pick-notes" rows="3" style="width:100%;box-sizing:border-box;font-size:13px;">${escHtml(engNote)}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Date</label>
+      <input id="ai-pick-date" type="date" value="${escHtml(engDate)}" style="font-size:13px;">
+    </div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin-bottom:8px;">ADD ENGAGEMENT TO:</div>`);
+
+  // Clickable contact cards
+  const cardsWrap = document.createElement('div');
+  cardsWrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:14px;';
+  matches.forEach(c => {
+    const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ');
+    const sub = [c.rank, c.title, c.org].filter(Boolean).join(' · ');
+    const card = document.createElement('button');
+    card.setAttribute('data-pick-id', c.id);
+    card.style.cssText = 'text-align:left;padding:10px 14px;border:2px solid var(--border);border-radius:8px;background:var(--surface-alt);cursor:pointer;width:100%;transition:border-color .15s;';
+    card.innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--text);">' + escHtml(fullName) + '</div>'
+      + (sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + escHtml(sub) + '</div>' : '');
+    card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--accent)'; });
+    card.addEventListener('mouseleave', () => { card.style.borderColor = _selectedId === c.id ? 'var(--accent)' : 'var(--border)'; });
+    card.addEventListener('click', () => {
+      _selectedId = c.id;
+      cardsWrap.querySelectorAll('[data-pick-id]').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.background = 'var(--surface-alt)'; });
+      card.style.borderColor = 'var(--accent)';
+      card.style.background = 'var(--accent-bg)';
+    });
+    cardsWrap.appendChild(card);
+  });
+  body.appendChild(cardsWrap);
+
+  // "New contact" escape hatch
+  const newBtn = document.createElement('button');
+  newBtn.textContent = '+ This is a new contact →';
+  newBtn.style.cssText = 'font-size:12px;color:var(--text-muted);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;';
+  newBtn.addEventListener('click', () => {
+    closeModal();
+    _showNewContactForm(result, result.extracted || {}, result.enrichment || {}, result.questions || [], engNote, engDate, result.photoUrl || '');
+  });
+  body.appendChild(newBtn);
+
+  let _selectedId = matches.length === 1 ? matches[0].id : null;
+  if (_selectedId) {
+    setTimeout(() => {
+      const firstCard = cardsWrap.querySelector('[data-pick-id]');
+      if (firstCard) { firstCard.style.borderColor = 'var(--accent)'; firstCard.style.background = 'var(--accent-bg)'; }
+    }, 0);
+  }
+
+  openModal({
+    title: '✦ AI Log — Log Engagement',
+    body,
+    saveLabel: 'Log Engagement',
+    table: null, id: null,
+    onSave: () => {
+      if (!_selectedId) { alert('Please select a contact.'); return; }
+      const noteText = (document.getElementById('ai-pick-notes').value || '').trim();
+      const dateStr  = (document.getElementById('ai-pick-date').value  || '').trim() || new Date().toISOString().slice(0, 10);
+      const engId = 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      DB.upsert('engagements', { id: engId, contact_id: _selectedId, engaged_at: dateStr, notes: noteText });
+      const c = DB.get('contacts', _selectedId);
+      if (c && (!c.last_engaged_at || dateStr > c.last_engaged_at)) {
+        DB.upsert('contacts', Object.assign({}, c, { last_engaged_at: dateStr }));
+      }
+      closeModal();
+      refreshAll();
+    }
+  });
+}
+
+function _showNewContactForm(result, ex, enr, questions, engNote, engDate, _scrapedPhoto) {
+  const body = document.createElement('div');
+
   if (enr.summary) {
     const conf = enr.confidence || 'low';
     const confColor = conf === 'high' ? '#2d7a3a' : conf === 'medium' ? '#8a6a00' : '#666';
     body.insertAdjacentHTML('beforeend', `
       <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:${confColor};margin-bottom:4px;">
-          AI BACKGROUND · ${conf.toUpperCase()} CONFIDENCE
-        </div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:${confColor};margin-bottom:4px;">AI BACKGROUND · ${conf.toUpperCase()} CONFIDENCE</div>
         <div style="font-size:13px;color:var(--text);line-height:1.5;">${escHtml(enr.summary)}</div>
         ${enr.caveat ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px;font-style:italic;">${escHtml(enr.caveat)}</div>` : ''}
-        ${enr.currentRole ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Current role: ${escHtml(enr.currentRole)}</div>` : ''}
-        ${enr.bioUrlFetched ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">📋 Bio scraped: <a href="${escHtml(enr.bioUrlFetched)}" target="_blank" rel="noopener" style="color:var(--accent);">${escHtml(enr.bioUrlFetched)}</a></div>` : ''}
         ${_scrapedPhoto ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;"><img src="${escHtml(_scrapedPhoto)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--border);"><span style="font-size:11px;color:var(--text-dim);">Photo pulled from official bio</span></div>` : ''}
       </div>`);
   }
 
-  // ── Existing contact banner ─────────────────────────────────
-  if (_existingMatch) {
-    const _matchName = [_existingMatch.firstName, _existingMatch.lastName].filter(Boolean).join(' ');
-    body.insertAdjacentHTML('beforeend', `
-      <div style="background:#1a3a1a;border:1px solid #2d7a3a;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
-        <span style="font-size:18px;">🔁</span>
-        <div>
-          <div style="font-size:12px;font-weight:700;color:#4caf50;">EXISTING CONTACT FOUND</div>
-          <div style="font-size:13px;color:var(--text);">${escHtml(_matchName)} — saving will update their record and log this engagement.</div>
-          <button id="ai-switch-new" style="margin-top:4px;font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Create as new contact instead</button>
-        </div>
-      </div>`);
-  }
-
-  // ── Extracted fields ────────────────────────────────────────
-  body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin-bottom:8px;">EXTRACTED CONTACT INFO — review and edit before saving</div>`);
+  body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin-bottom:8px;">NEW CONTACT INFO — review and edit before saving</div>`);
 
   const fRow = (label, id, val, placeholder, datalistId) =>
     `<div style="margin-bottom:8px;">
@@ -499,7 +587,6 @@ function _showIntelResult(result, originalText) {
     fRow('Phone',       'ai-phone',      ex.phone,      '');
   body.appendChild(grid);
 
-  // Notes / engagement summary
   body.insertAdjacentHTML('beforeend', `
     <div style="margin-bottom:10px;">
       <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Notes</label>
@@ -507,29 +594,24 @@ function _showIntelResult(result, originalText) {
     </div>
     <div style="margin-bottom:10px;">
       <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Date</label>
-      <input id="ai-eng-date" type="date" value="${escHtml(_engDateDefault)}" style="font-size:13px;">
+      <input id="ai-eng-date" type="date" value="${escHtml(engDate)}" style="font-size:13px;">
     </div>`);
 
-  // ── Clarifying questions ────────────────────────────────────
   if (questions.length) {
-    body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin:10px 0 6px;">AI QUESTIONS — answer to improve accuracy</div>`);
+    body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin:10px 0 6px;">AI QUESTIONS</div>`);
     questions.forEach((q, i) => {
       const qEl = document.createElement('div');
       qEl.style.cssText = 'background:var(--accent-bg);border-radius:6px;padding:10px 12px;margin-bottom:6px;';
-      qEl.innerHTML = `
-        <div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(q.question)}</div>
+      qEl.innerHTML = `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(q.question)}</div>
         <input id="ai-q-${i}" value="${escHtml(q.suggestedAnswer||'')}" placeholder="Your answer…" style="width:100%;box-sizing:border-box;font-size:12px;" data-ai-q-field="${escHtml(q.field||'')}">`;
       body.appendChild(qEl);
     });
   }
 
-  // Track whether user wants to create new instead of updating existing
-  let _forceNew = false;
-
   openModal({
-    title: '✦ AI Log — Confirm Contact',
+    title: '✦ AI Log — New Contact',
     body,
-    saveLabel: _existingMatch ? 'Update Contact' : 'Save Contact',
+    saveLabel: 'Save Contact',
     table: null, id: null,
     onSave: () => {
       const fieldOverrides = {};
@@ -537,59 +619,37 @@ function _showIntelResult(result, originalText) {
         const inp = document.getElementById('ai-q-' + i);
         if (inp && inp.value.trim() && q.field) fieldOverrides[q.field] = inp.value.trim();
       });
-
-      const _firstName = (fieldOverrides.firstName  || document.getElementById('ai-firstName').value  || '').trim();
-      const _lastName  = (fieldOverrides.lastName   || document.getElementById('ai-lastName').value   || '').trim();
+      const _firstName = (fieldOverrides.firstName || document.getElementById('ai-firstName').value || '').trim();
+      const _lastName  = (fieldOverrides.lastName  || document.getElementById('ai-lastName').value  || '').trim();
       if (!_lastName && !_firstName) { alert('At least a name is required.'); return; }
-
-      const _useExistingId = (!_forceNew && _existingMatch) ? _existingMatch.id : null;
-      const _base = _useExistingId ? (DB.get('contacts', _useExistingId) || {}) : {};
-      const rec = Object.assign({}, _base, {
-        id: _useExistingId || '',
-        firstName:  _firstName  || _base.firstName  || '',
-        lastName:   _lastName   || _base.lastName   || '',
-        rank:       (fieldOverrides.rank       || document.getElementById('ai-rank').value       || '').trim() || _base.rank       || '',
-        title:      (fieldOverrides.title      || document.getElementById('ai-title').value      || '').trim() || _base.title      || '',
-        org:        (fieldOverrides.org        || document.getElementById('ai-org').value        || '').trim() || _base.org        || '',
-        department: (fieldOverrides.department || document.getElementById('ai-dept').value       || '').trim() || _base.department || '',
-        email:      (fieldOverrides.email      || document.getElementById('ai-email').value      || '').trim() || _base.email      || '',
-        phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim() || _base.phone      || '',
-        notes:      (document.getElementById('ai-notes').value || '').trim() || _base.notes || '',
-        officeIds:  _base.officeIds || [],
-        photoUrl:   _scrapedPhoto || _base.photoUrl || '',
-        linkedinUrl: enr.linkedinHint || _base.linkedinUrl || '',
-        source: _base.source || 'AI Log',
-        lead: _base.lead || '', callsign: _base.callsign || '', unit: _base.unit || '',
-        branch: ex.branch || _base.branch || '', legislator_bioguide_id: _base.legislator_bioguide_id || null,
-      });
+      const rec = {
+        id: '',
+        firstName: _firstName, lastName: _lastName,
+        rank:       (fieldOverrides.rank       || document.getElementById('ai-rank').value       || '').trim(),
+        title:      (fieldOverrides.title      || document.getElementById('ai-title').value      || '').trim(),
+        org:        (fieldOverrides.org        || document.getElementById('ai-org').value        || '').trim(),
+        department: (fieldOverrides.department || document.getElementById('ai-dept').value       || '').trim(),
+        email:      (fieldOverrides.email      || document.getElementById('ai-email').value      || '').trim(),
+        phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim(),
+        notes:      (document.getElementById('ai-notes').value || '').trim(),
+        officeIds: [], photoUrl: _scrapedPhoto || '', linkedinUrl: enr.linkedinHint || '',
+        source: 'AI Log', lead: '', callsign: '', unit: '',
+        branch: ex.branch || '', legislator_bioguide_id: null,
+      };
       DB.upsert('contacts', rec);
-      const _noteText = (document.getElementById('ai-notes').value || '').trim();
+      const _noteText = rec.notes;
       if (_noteText) {
-        const today = (document.getElementById('ai-eng-date') || {}).value || new Date().toISOString().slice(0, 10);
+        const dateStr = (document.getElementById('ai-eng-date').value || '').trim() || new Date().toISOString().slice(0, 10);
         const _cid = rec.id || DB.list('contacts').find(c => c.lastName === rec.lastName && c.firstName === rec.firstName)?.id;
         if (_cid) {
-          DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: _cid, engaged_at: today, notes: _noteText });
-          DB.upsert('contacts', Object.assign({}, DB.get('contacts', _cid) || rec, { id: _cid, last_engaged_at: today }));
+          DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: _cid, engaged_at: dateStr, notes: _noteText });
+          DB.upsert('contacts', Object.assign({}, DB.get('contacts', _cid) || rec, { id: _cid, last_engaged_at: dateStr }));
         }
       }
       closeModal();
       refreshAll();
     }
   });
-
-  // Wire up "Create as new contact instead" link after modal DOM exists
-  if (_existingMatch) {
-    setTimeout(() => {
-      const btn = document.getElementById('ai-switch-new');
-      if (!btn) return;
-      btn.addEventListener('click', () => {
-        _forceNew = true;
-        btn.closest('div[style]').style.display = 'none';
-        const saveBtn = document.getElementById('modalSave');
-        if (saveBtn) saveBtn.textContent = 'Save Contact';
-      });
-    }, 0);
-  }
 }
 
 document.getElementById('btnLogEngagement').addEventListener('click', logEngagement);
