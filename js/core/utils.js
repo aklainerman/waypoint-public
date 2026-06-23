@@ -318,6 +318,8 @@ function openModal(opts) {
   modalBodyEl.innerHTML = '';
   modalBodyEl.appendChild(opts.body);
   modalDelBtn.classList.toggle('hidden', !opts.id);
+  modalSaveBtn.textContent = opts.saveLabel || 'Save';
+  modalSaveBtn.disabled = false;
   modalBackdrop.classList.add('open');
   setTimeout(() => {
     const first = modalBodyEl.querySelector('input, select, textarea');

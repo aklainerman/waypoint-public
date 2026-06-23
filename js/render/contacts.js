@@ -293,6 +293,168 @@ function editContact(id) {
   });
 }
 document.getElementById('btnAddContact').addEventListener('click', () => editContact(null));
+
+// ---------------------------------------------------------------
+//  AI Engagement Log
+// ---------------------------------------------------------------
+async function logEngagement() {
+  // ── Step 1: input modal ──────────────────────────────────────
+  const step1Body = document.createElement('div');
+  step1Body.innerHTML = `
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 10px;">
+      Describe who you met, what was discussed, or paste any notes.
+      The AI will extract contact info and look up background on the person.
+    </p>
+    <textarea id="ai-log-text" rows="7" placeholder="e.g. Met with Col. Sarah McClain at AFRL Wright-Patt on 10 June to discuss the Directed Energy portfolio. She is the division chief for DE programs and was very interested in our laser ranging work. Follow up scheduled for July.
+
+Or: New contact — General George Patton, runs the 3rd Army out of Fort Knox, legendary tank commander." style="width:100%;box-sizing:border-box;font-size:13px;"></textarea>
+    <div id="ai-log-status" style="margin-top:8px;font-size:12px;color:var(--text-dim);min-height:18px;"></div>`;
+
+  openModal({
+    title: '✦ AI Engagement Log',
+    body: step1Body,
+    saveLabel: 'Analyze →',
+    table: null, id: null,
+    onSave: async () => {
+      const text = (document.getElementById('ai-log-text') || {}).value || '';
+      if (!text.trim()) { alert('Please enter some text first.'); return; }
+
+      const statusEl = document.getElementById('ai-log-status');
+      if (statusEl) statusEl.textContent = '⏳ Analyzing…';
+
+      // Disable save button while working
+      const saveBtn = document.getElementById('modalSave');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Analyzing…'; }
+
+      let result;
+      try {
+        const res = await fetch('/.netlify/functions/contact-intel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('HTTP ' + res.status));
+        }
+        result = await res.json();
+      } catch (e) {
+        if (statusEl) statusEl.textContent = '❌ Error: ' + e.message;
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Analyze →'; }
+        return;
+      }
+
+      closeModal();
+      _showIntelResult(result, text);
+    }
+  });
+  setTimeout(() => { const t = document.getElementById('ai-log-text'); if (t) t.focus(); }, 50);
+}
+
+function _showIntelResult(result, originalText) {
+  const ex = result.extracted || {};
+  const enr = result.enrichment || {};
+  const questions = result.questions || [];
+  const engNote = result.engagementNote || '';
+
+  const body = document.createElement('div');
+
+  // ── Enrichment banner ───────────────────────────────────────
+  if (enr.summary) {
+    const conf = enr.confidence || 'low';
+    const confColor = conf === 'high' ? '#2d7a3a' : conf === 'medium' ? '#8a6a00' : '#666';
+    body.insertAdjacentHTML('beforeend', `
+      <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:${confColor};margin-bottom:4px;">
+          AI BACKGROUND · ${conf.toUpperCase()} CONFIDENCE
+        </div>
+        <div style="font-size:13px;color:var(--text);line-height:1.5;">${escHtml(enr.summary)}</div>
+        ${enr.caveat ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px;font-style:italic;">${escHtml(enr.caveat)}</div>` : ''}
+        ${enr.currentRole ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Current role: ${escHtml(enr.currentRole)}</div>` : ''}
+      </div>`);
+  }
+
+  // ── Extracted fields ────────────────────────────────────────
+  body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin-bottom:8px;">EXTRACTED CONTACT INFO — review and edit before saving</div>`);
+
+  const fRow = (label, id, val, placeholder) =>
+    `<div style="margin-bottom:8px;">
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">${label}</label>
+      <input id="${id}" value="${escHtml(val||'')}" placeholder="${escHtml(placeholder||'')}" style="width:100%;box-sizing:border-box;font-size:13px;">
+    </div>`;
+
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0 12px;';
+  grid.innerHTML =
+    fRow('First Name',  'ai-firstName',  ex.firstName,  '') +
+    fRow('Last Name',   'ai-lastName',   ex.lastName,   '') +
+    fRow('Rank',        'ai-rank',       ex.rank,       'e.g. Col, BGen, SES') +
+    fRow('Title / Role','ai-title',      ex.title,      '') +
+    fRow('Org',         'ai-org',        ex.org,        'e.g. AFRL, MDA') +
+    fRow('Department',  'ai-dept',       ex.department, 'e.g. Directed Energy') +
+    fRow('Email',       'ai-email',      ex.email,      '') +
+    fRow('Phone',       'ai-phone',      ex.phone,      '');
+  body.appendChild(grid);
+
+  // Notes / engagement summary
+  body.insertAdjacentHTML('beforeend', `
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">Engagement Notes</label>
+      <textarea id="ai-notes" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;">${escHtml(engNote)}</textarea>
+    </div>`);
+
+  // ── Clarifying questions ────────────────────────────────────
+  if (questions.length) {
+    body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin:10px 0 6px;">AI QUESTIONS — answer to improve accuracy</div>`);
+    questions.forEach((q, i) => {
+      const qEl = document.createElement('div');
+      qEl.style.cssText = 'background:var(--accent-bg);border-radius:6px;padding:10px 12px;margin-bottom:6px;';
+      qEl.innerHTML = `
+        <div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(q.question)}</div>
+        <input id="ai-q-${i}" value="${escHtml(q.suggestedAnswer||'')}" placeholder="Your answer…" style="width:100%;box-sizing:border-box;font-size:12px;" data-ai-q-field="${escHtml(q.field||'')}">`;
+      body.appendChild(qEl);
+    });
+  }
+
+  openModal({
+    title: '✦ AI Log — Confirm Contact',
+    body,
+    saveLabel: 'Save Contact',
+    table: null, id: null,
+    onSave: () => {
+      // Merge question answers back into fields
+      const fieldOverrides = {};
+      questions.forEach((q, i) => {
+        const inp = document.getElementById('ai-q-' + i);
+        if (inp && inp.value.trim() && q.field) fieldOverrides[q.field] = inp.value.trim();
+      });
+
+      const rec = {
+        id: '',
+        firstName:  (fieldOverrides.firstName  || document.getElementById('ai-firstName').value  || '').trim(),
+        lastName:   (fieldOverrides.lastName   || document.getElementById('ai-lastName').value   || '').trim(),
+        rank:       (fieldOverrides.rank       || document.getElementById('ai-rank').value       || '').trim(),
+        title:      (fieldOverrides.title      || document.getElementById('ai-title').value      || '').trim(),
+        org:        (fieldOverrides.org        || document.getElementById('ai-org').value        || '').trim(),
+        department: (fieldOverrides.department || document.getElementById('ai-dept').value       || '').trim(),
+        email:      (fieldOverrides.email      || document.getElementById('ai-email').value      || '').trim(),
+        phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim(),
+        notes:      (document.getElementById('ai-notes').value || '').trim(),
+        officeIds: [],
+        photoUrl: '',
+        linkedinUrl: enr.linkedinHint || '',
+        source: 'AI Log',
+        lead: '', callsign: '', unit: '', branch: ex.branch || '', legislator_bioguide_id: null,
+      };
+      if (!rec.lastName && !rec.firstName) { alert('At least a name is required.'); return; }
+      DB.upsert('contacts', rec);
+      closeModal();
+      refreshAll();
+    }
+  });
+}
+
+document.getElementById('btnLogEngagement').addEventListener('click', logEngagement);
 ['contactsSearch','contactsOfficeFilter','contactsDeptFilter','contactsChampionOnly','contactsPriorityOrgOnly','contactsHasSolOnly','contactsHasLosOnly'].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
