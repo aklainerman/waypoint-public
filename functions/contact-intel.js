@@ -34,7 +34,8 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'text is required' }) };
   }
 
-  const systemPrompt = `You are a DoD CRM assistant helping a defense contractor or program manager log contacts and engagements.
+  const _today = new Date().toISOString().slice(0, 10);
+  const systemPrompt = `You are a DoD CRM assistant helping a defense contractor or program manager log contacts and engagements. Today's date is ${_today}.
 
 Given free-form text describing a meeting, encounter, or person, you will:
 1. Extract structured contact data
@@ -65,7 +66,7 @@ Return a JSON object with this exact shape:
     "confidence": "high/medium/low",
     "caveat": "any caveats about accuracy — e.g. 'multiple officers with this name exist' or 'could not find specific info'"
   },
-  "engagementDate": "ISO date (YYYY-MM-DD) of the engagement/meeting if mentioned in the text, else empty string",
+  "engagementDate": "ISO date (YYYY-MM-DD) of the engagement/meeting if a date is mentioned (e.g. 'April 15', 'last Tuesday', 'yesterday'). Infer the year from context; if no year given assume the most recent plausible past date. Return empty string only if no date is mentioned at all.",
   "engagementNote": "cleaned-up version of the engagement/meeting note portion of the text, suitable for the contact's notes field",
   "questions": [
     {
