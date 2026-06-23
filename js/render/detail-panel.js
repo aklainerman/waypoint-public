@@ -592,8 +592,11 @@ function openContactDetailPanel(contactId) {
       } else {
         eHtml += '<div style="display:flex;flex-direction:column;gap:6px;' + (engs.length > 5 ? 'max-height:260px;overflow-y:auto;' : '') + '">';
         engs.forEach(e => {
-          eHtml += '<div style="border-left:3px solid var(--border);padding-left:8px;">'
-            + '<div style="font-size:11px;font-weight:600;color:var(--text-muted);">' + escHtml(e.engaged_at || '') + '</div>'
+          eHtml += '<div style="border-left:3px solid var(--border);padding-left:8px;position:relative;" data-eng-id="' + escHtml(e.id) + '">'
+            + '<div style="font-size:11px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:8px;">'
+            + escHtml(e.engaged_at || '')
+            + '<button data-del-eng="' + escHtml(e.id) + '" title="Remove this engagement" style="font-size:10px;padding:0 4px;border:1px solid var(--border);border-radius:3px;background:none;cursor:pointer;color:var(--text-muted);line-height:16px;">✕</button>'
+            + '</div>'
             + (e.notes ? '<div style="font-size:12px;color:var(--text);margin-top:2px;white-space:pre-wrap;">' + escHtml(e.notes) + '</div>' : '')
             + '</div>';
         });
@@ -609,6 +612,20 @@ function openContactDetailPanel(contactId) {
           _openLogEngagementModal(contactId);
         });
       }
+
+      panelBody.querySelectorAll('[data-del-eng]').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const engId = btn.getAttribute('data-del-eng');
+          DB.remove('engagements', engId);
+          // Recalculate last_engaged_at from remaining engagements
+          const remaining = (DB.list('engagements') || []).filter(x => x.contact_id === contactId);
+          const latest = remaining.reduce((max, x) => (!max || x.engaged_at > max) ? x.engaged_at : max, null);
+          const c = DB.get('contacts', contactId);
+          if (c) DB.upsert('contacts', Object.assign({}, c, { last_engaged_at: latest || null }));
+          openContactDetailPanel(contactId); // re-render panel
+        });
+      });
     } catch (err) { console.error('[engagement-panel] render failed:', err); }
   })();
 
