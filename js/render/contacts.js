@@ -137,22 +137,31 @@ function renderContacts() {
         _engDot = '<span title="' + _label + ': ' + c.last_engaged_at + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + _color + ';margin-left:5px;vertical-align:middle;"></span>';
       }
     }
+    // Last engagement cell
+    let _lastEngCell = '—';
+    if (c.track_engagements) {
+      if (!c.last_engaged_at) {
+        _lastEngCell = '<span style="color:#888;font-size:11px;">Never</span>';
+      } else {
+        const _days = (_now - new Date(c.last_engaged_at).getTime()) / 86400000;
+        const _color = _days > 180 ? '#c0392b' : _days > 90 ? '#e67e22' : '#27ae60';
+        _lastEngCell = '<span style="color:' + _color + ';font-size:12px;font-weight:600;" title="' + Math.round(_days) + ' days ago">' + c.last_engaged_at + '</span>';
+      }
+    }
     return '<tr data-id="' + c.id + '">'
     + '<td><span class="champ-toggle ' + (c.champion?'on':'') + '" data-champ-toggle="' + c.id + '" title="Toggle champion">★</span></td>'
     + '<td>' + escHtml(c.firstName||'') + '</td>'
     + '<td><strong>' + escHtml(c.lastName||'') + '</strong>' + _engDot + '</td>'
-    + '<td>' + escHtml(c.callsign||'') + '</td>'
     + '<td>' + escHtml(c.rank||'') + '</td>'
     + '<td>' + escHtml(c.title||'') + '</td>'
     + '<td>' + orgCells(c.officeIds, c.legislator_bioguide_id, c.org) + '</td>'
     + '<td>' + deptBadge(contactDepartment(c)) + '</td>'
-    + '<td>' + (c.email ? '<a href="mailto:' + escHtml(c.email) + '">' + escHtml(c.email) + '</a>' : '—') + '</td>'
-    + '<td>' + escHtml(c.phone||'—') + '</td>'
+    + '<td>' + _lastEngCell + '</td>'
     + '<td class="td-actions">'
       + '<button class="btn-icon" data-edit="' + c.id + '">Edit</button>'
       + '<button class="btn-icon danger" data-del="' + c.id + '">Del</button>'
-    + '</td></tr>'
-  ).join('') || '<tr><td colspan="11" style="text-align:center;color:var(--text-dim);padding:1.5rem;">No contacts.</td></tr>';
+    + '</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:1.5rem;">No contacts.</td></tr>';
   tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); editContact(b.dataset.edit); }));
   tbody.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (confirm('Delete contact?')) { DB.remove('contacts', b.dataset.del); refreshAll(); }}));
   tbody.querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', (e) => {
