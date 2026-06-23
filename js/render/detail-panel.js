@@ -499,6 +499,7 @@ function openContactDetailPanel(contactId) {
     });
   }
   panelBody.innerHTML = html;
+  console.log('[photo] panelBody tag/id:', panelBody && panelBody.tagName, panelBody && panelBody.id, '| innerHTML starts:', panelBody.innerHTML.slice(0, 300));
 
   // -- Photo: route through same-origin proxy → blob URL → CSS background-image.
   //    Avoids CORS + Edge Tracking Prevention on the Supabase domain.
