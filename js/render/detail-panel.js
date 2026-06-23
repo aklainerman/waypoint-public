@@ -406,16 +406,21 @@ function openContactDetailPanel(contactId) {
 
   // ── Contact card ────────────────────────────────────────────
   html += '<div class=”rel-block” style=”display:flex;gap:14px;align-items:flex-start;margin-bottom:4px;”>';
-  // Photo avatar
+  // Photo avatar — always render initials div as fallback; img overlays it
+  const _initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
+  const _avatarStyle = 'width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;';
+  const _fallbackDiv = '<div style=”' + _avatarStyle + 'background:var(--surface-alt);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>'
+    + escHtml(_initials) + '</div>';
   if (contact.photoUrl) {
-    html += '<img src=”' + escHtml(contact.photoUrl) + '” alt=”” onerror=”this.style.display=\'none\'” '
-      + 'style=”width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;”>';
+    const _imgId = 'cpavatar-' + contactId.replace(/[^a-z0-9]/gi, '');
+    html += '<div style=”position:relative;width:72px;height:72px;flex-shrink:0;”>'
+      + _fallbackDiv.replace('display:flex', 'display:flex;position:absolute;inset:0;')
+      + '<img id=”' + _imgId + '” src=”' + escHtml(contact.photoUrl) + '” alt=”” '
+      + 'style=”' + _avatarStyle + 'object-fit:cover;position:absolute;inset:0;” '
+      + 'onerror=”this.style.display=\'none\'”>'
+      + '</div>';
   } else {
-    // Initials placeholder
-    const initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
-    html += '<div style=”width:72px;height:72px;border-radius:50%;background:var(--surface-alt);border:2px solid var(--border);'
-      + 'display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);flex-shrink:0;”>'
-      + escHtml(initials) + '</div>';
+    html += _fallbackDiv;
   }
   // Info block
   html += '<div style=”flex:1;min-width:0;”>';
