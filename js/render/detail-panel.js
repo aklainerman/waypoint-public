@@ -503,6 +503,7 @@ function openContactDetailPanel(contactId) {
   // -- Photo preload: set as CSS background-image after confirmed load --
   if (contact.photoUrl) {
     const _preload = new Image();
+    _preload.loading = 'eager';
     _preload.onload = () => {
       const _wrap = panelBody.querySelector('#' + _avatarId);
       if (!_wrap) return;
