@@ -342,7 +342,7 @@ async function dismissSagOfficeSuggestion(sagId, officeId) {
 
 
 const DB = {
-  state: { offices:[], contacts:[], solicitations:[], letters:[], washops:[], requests:[], budget_orgs:[], budget_appropriations:[], budget_pes:[], budget_projects:[], pe_office_links:[], pe_office_link_dismissals:[], pe_office_suggestions:[], budget_om_sags:[], sag_office_links:[], sag_office_link_dismissals:[], sag_office_suggestions:[], lastSaved:null },
+  state: { offices:[], contacts:[], solicitations:[], letters:[], washops:[], requests:[], budget_orgs:[], budget_appropriations:[], budget_pes:[], budget_projects:[], pe_office_links:[], pe_office_link_dismissals:[], pe_office_suggestions:[], budget_om_sags:[], sag_office_links:[], sag_office_link_dismissals:[], sag_office_suggestions:[], engagements:[], lastSaved:null },
 
   // Fetch all tables from Supabase. If every table is empty, seed on first use.
   // before the v58 migration is run) does NOT break boot.
@@ -381,7 +381,7 @@ const DB = {
     ));
     let total = 0;
     let nonOptionalTotal = 0;
-    const OPTIONAL = new Set(['requests','budget_orgs','budget_appropriations','budget_pes','budget_projects','pe_office_links','pe_office_link_dismissals','pe_office_suggestions','budget_om_sags','budget_topline_lines','sag_office_links','sag_office_link_dismissals','sag_office_suggestions','hill_members','hill_committees','hill_committee_memberships','hill_meetings','hill_requests']);
+    const OPTIONAL = new Set(['requests','budget_orgs','budget_appropriations','budget_pes','budget_projects','pe_office_links','pe_office_link_dismissals','pe_office_suggestions','budget_om_sags','budget_topline_lines','sag_office_links','sag_office_link_dismissals','sag_office_suggestions','hill_members','hill_committees','hill_committee_memberships','hill_meetings','hill_requests','engagements']);
     results.forEach(({ t, r }) => {
       if (r.error) {
         if (OPTIONAL.has(t)) {

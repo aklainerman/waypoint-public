@@ -531,6 +531,42 @@ function openContactDetailPanel(contactId) {
     catch (e) { console.error('[contact-panel-budget] render failed:', e); }
   }
 
+  // -- Engagement history section --
+  (function _appendEngagements() {
+    try {
+      const engs = (DB.list('engagements') || [])
+        .filter(e => e && e.contact_id === contactId)
+        .sort((a, b) => String(b.engaged_at || '').localeCompare(String(a.engaged_at || '')));
+      let eHtml = '<div class="rel-block" style="margin-top:10px;" id="eng-history-block">';
+      eHtml += '<div class="detail-label" style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">'
+        + '<span>Engagement History (' + engs.length + ')</span>'
+        + '<button id="btnLogEngInPanel" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface-alt);cursor:pointer;color:var(--text);">+ Log</button>'
+        + '</div>';
+      if (engs.length === 0) {
+        eHtml += '<div style="color:var(--text-muted);font-size:12px;">No engagements logged yet.</div>';
+      } else {
+        eHtml += '<div style="display:flex;flex-direction:column;gap:6px;' + (engs.length > 5 ? 'max-height:260px;overflow-y:auto;' : '') + '">';
+        engs.forEach(e => {
+          eHtml += '<div style="border-left:3px solid var(--border);padding-left:8px;">'
+            + '<div style="font-size:11px;font-weight:600;color:var(--text-muted);">' + escHtml(e.engaged_at || '') + '</div>'
+            + (e.notes ? '<div style="font-size:12px;color:var(--text);margin-top:2px;white-space:pre-wrap;">' + escHtml(e.notes) + '</div>' : '')
+            + '</div>';
+        });
+        eHtml += '</div>';
+      }
+      eHtml += '</div>';
+      panelBody.insertAdjacentHTML('beforeend', eHtml);
+
+      const logBtn = panelBody.querySelector('#btnLogEngInPanel');
+      if (logBtn) {
+        logBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          _openLogEngagementModal(contactId);
+        });
+      }
+    } catch (err) { console.error('[engagement-panel] render failed:', err); }
+  })();
+
   // -- Related actions --
   const rels = [];
   rels.push('<div class="rel-link-row"><a data-contact-edit="' + escHtml(contact.id) + '">Edit contact →</a></div>');
@@ -987,6 +1023,46 @@ document.querySelectorAll('.section-label').forEach(label => {
   if (/^Tier 2\(a\)/.test(label.textContent)) label.classList.add('tier-anchor');
 });
 
+
+// ---------------------------------------------------------------
+//  Log Engagement modal (called from contact detail panel)
+// ---------------------------------------------------------------
+function _openLogEngagementModal(contactId) {
+  const contact = DB.get('contacts', contactId);
+  const today = new Date().toISOString().slice(0, 10);
+  const body = document.createElement('div');
+  body.innerHTML =
+    '<div style="margin-bottom:10px;">'
+    + '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Date</label>'
+    + '<input id="eng-date" type="date" value="' + escHtml(today) + '" style="width:160px;font-size:13px;">'
+    + '</div>'
+    + '<div>'
+    + '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Notes</label>'
+    + '<textarea id="eng-notes" rows="5" placeholder="What was discussed, outcomes, follow-ups…" style="width:100%;box-sizing:border-box;font-size:13px;"></textarea>'
+    + '</div>';
+  openModal({
+    title: 'Log Engagement · ' + ((contact && ((contact.firstName||'') + ' ' + (contact.lastName||'')).trim()) || contactId),
+    body,
+    saveLabel: 'Save',
+    table: null, id: null,
+    onSave: () => {
+      const date = (document.getElementById('eng-date').value || today).trim();
+      const notes = (document.getElementById('eng-notes').value || '').trim();
+      if (!date) { alert('Please enter a date.'); return; }
+      const engId = 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      DB.upsert('engagements', { id: engId, contact_id: contactId, engaged_at: date, notes });
+      // Update denormalized last_engaged_at on the contact if this date is newer
+      const existing = DB.get('contacts', contactId);
+      if (existing && (!existing.last_engaged_at || date > existing.last_engaged_at)) {
+        DB.upsert('contacts', Object.assign({}, existing, { last_engaged_at: date }));
+      }
+      closeModal();
+      openContactDetailPanel(contactId);
+      if (typeof renderContacts === 'function') renderContacts();
+    }
+  });
+  setTimeout(() => { const n = document.getElementById('eng-notes'); if (n) n.focus(); }, 50);
+}
 
 // =================================================================
 // =================================================================

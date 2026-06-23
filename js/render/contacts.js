@@ -124,10 +124,23 @@ function renderContacts() {
     officeId:   r => (r.officeIds||[]).map(officeName).join(', ') + ' ' + legislatorSearchHay(r),  // v167
   });
   document.getElementById('contactsCount').textContent = rows.length + ' contacts';
-  tbody.innerHTML = rows.map(c => '<tr data-id="' + c.id + '">'
+  const _now = Date.now();
+  tbody.innerHTML = rows.map(c => {
+    let _engDot = '';
+    if (c.track_engagements) {
+      if (!c.last_engaged_at) {
+        _engDot = '<span title="Engagement tracking on — never logged" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#888;margin-left:5px;vertical-align:middle;"></span>';
+      } else {
+        const _days = (_now - new Date(c.last_engaged_at).getTime()) / 86400000;
+        const _color = _days > 180 ? '#c0392b' : _days > 90 ? '#e67e22' : '#27ae60';
+        const _label = _days > 180 ? 'Last engagement >6 months ago' : _days > 90 ? 'Last engagement >3 months ago' : 'Recently engaged';
+        _engDot = '<span title="' + _label + ': ' + c.last_engaged_at + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + _color + ';margin-left:5px;vertical-align:middle;"></span>';
+      }
+    }
+    return '<tr data-id="' + c.id + '">'
     + '<td><span class="champ-toggle ' + (c.champion?'on':'') + '" data-champ-toggle="' + c.id + '" title="Toggle champion">★</span></td>'
     + '<td>' + escHtml(c.firstName||'') + '</td>'
-    + '<td><strong>' + escHtml(c.lastName||'') + '</strong></td>'
+    + '<td><strong>' + escHtml(c.lastName||'') + '</strong>' + _engDot + '</td>'
     + '<td>' + escHtml(c.callsign||'') + '</td>'
     + '<td>' + escHtml(c.rank||'') + '</td>'
     + '<td>' + escHtml(c.title||'') + '</td>'
@@ -295,6 +308,11 @@ function editContact(id) {
     field('Relationship Lead', '<input id="f-lead" value="' + escHtml(c.lead||'') + '" placeholder="e.g. Chance / Greg / Trish">')
   ));
   body.appendChild(field('Notes', '<textarea id="f-notes">' + escHtml(c.notes||'') + '</textarea>'));
+  body.appendChild(field('Engagement Tracking',
+    '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">'
+    + '<input type="checkbox" id="f-trackEngagements"' + (c.track_engagements ? ' checked' : '') + ' style="width:16px;height:16px;">'
+    + 'Track engagements for this contact (colors row yellow &gt;3 months, red &gt;6 months)</label>'
+  ));
   openModal({
     title: id ? 'Edit Contact · ' + (c.firstName + ' ' + c.lastName).trim() : 'Add Contact',
     body, table:'contacts', id: c.id || '',
@@ -319,6 +337,7 @@ function editContact(id) {
         source:    document.getElementById('f-source').value.trim(),
         lead:      document.getElementById('f-lead').value.trim(),
         notes:     document.getElementById('f-notes').value.trim(),
+        track_engagements: document.getElementById('f-trackEngagements').checked,
       };
       if (!rec.lastName && !rec.firstName) { alert('At least a name is required.'); return; }
       if (_pendingPhotoFile) {
@@ -400,6 +419,7 @@ function _showIntelResult(result, originalText) {
   const enr = result.enrichment || {};
   const questions = result.questions || [];
   const engNote = result.engagementNote || '';
+  const _scrapedPhoto = result.photoUrl || '';
 
   const body = document.createElement('div');
 
@@ -415,6 +435,8 @@ function _showIntelResult(result, originalText) {
         <div style="font-size:13px;color:var(--text);line-height:1.5;">${escHtml(enr.summary)}</div>
         ${enr.caveat ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px;font-style:italic;">${escHtml(enr.caveat)}</div>` : ''}
         ${enr.currentRole ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Current role: ${escHtml(enr.currentRole)}</div>` : ''}
+        ${enr.bioUrlFetched ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">📋 Bio scraped: <a href="${escHtml(enr.bioUrlFetched)}" target="_blank" rel="noopener" style="color:var(--accent);">${escHtml(enr.bioUrlFetched)}</a></div>` : ''}
+        ${_scrapedPhoto ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;"><img src="${escHtml(_scrapedPhoto)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--border);"><span style="font-size:11px;color:var(--text-dim);">Photo pulled from official bio</span></div>` : ''}
       </div>`);
   }
 
@@ -485,13 +507,19 @@ function _showIntelResult(result, originalText) {
         phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim(),
         notes:      (document.getElementById('ai-notes').value || '').trim(),
         officeIds: [],
-        photoUrl: '',
+        photoUrl: _scrapedPhoto || '',
         linkedinUrl: enr.linkedinHint || '',
         source: 'AI Log',
         lead: '', callsign: '', unit: '', branch: ex.branch || '', legislator_bioguide_id: null,
       };
       if (!rec.lastName && !rec.firstName) { alert('At least a name is required.'); return; }
       DB.upsert('contacts', rec);
+      // Auto-log the engagement note if there was one
+      if (rec.notes && rec.id) {
+        const today = new Date().toISOString().slice(0, 10);
+        DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: rec.id, engaged_at: today, notes: rec.notes });
+        DB.upsert('contacts', Object.assign({}, rec, { last_engaged_at: today }));
+      }
       closeModal();
       refreshAll();
     }

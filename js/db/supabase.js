@@ -47,7 +47,7 @@
 // the same HTML can deploy to both stage and prod Netlify sites and each
 // will connect to its own Supabase project (env vars set by the Netlify
 // Supabase integration per site). See netlify/functions/config.js.
-const TABLES = ['offices','contacts','solicitations','letters','washops','requests','budget_orgs','budget_appropriations','budget_pes','budget_projects','pe_office_links','pe_office_link_dismissals','pe_office_suggestions','budget_om_sags','budget_topline_lines','sag_office_links','sag_office_link_dismissals','sag_office_suggestions','office_media','hill_members','hill_committees','hill_committee_memberships','hill_meetings','hill_requests'];
+const TABLES = ['offices','contacts','solicitations','letters','washops','requests','budget_orgs','budget_appropriations','budget_pes','budget_projects','pe_office_links','pe_office_link_dismissals','pe_office_suggestions','budget_om_sags','budget_topline_lines','sag_office_links','sag_office_link_dismissals','sag_office_suggestions','office_media','hill_members','hill_committees','hill_committee_memberships','hill_meetings','hill_requests','engagements'];
 
 // _sb is populated by _initSupabase() during boot. All uses of _sb happen
 // inside async functions invoked after boot completes, so late binding is safe.

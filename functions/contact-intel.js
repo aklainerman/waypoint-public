@@ -61,6 +61,7 @@ Return a JSON object with this exact shape:
     "currentRole": "",
     "previousRoles": [],
     "linkedinHint": "likely LinkedIn URL pattern if known, else empty string",
+    "bioUrl": "URL of the person's official bio page if you know it (e.g. https://www.spaceforce.mil/Biographies/... or https://www.army.mil/leaders/...). Leave empty string if unknown.",
     "confidence": "high/medium/low",
     "caveat": "any caveats about accuracy — e.g. 'multiple officers with this name exist' or 'could not find specific info'"
   },
@@ -117,6 +118,55 @@ Rules:
   try { parsed = JSON.parse(cleaned); }
   catch {
     return { statusCode: 502, body: JSON.stringify({ error: 'Claude returned non-JSON', raw: claudeResp.slice(0, 500) }) };
+  }
+
+  // ── Bio page scraping ──────────────────────────────────────────
+  // If Claude identified an official bio URL, fetch it and extract
+  // the headshot (og:image or first prominent img) plus any bio text
+  // to improve enrichment accuracy.
+  const bioUrl = parsed.enrichment && parsed.enrichment.bioUrl;
+  if (bioUrl && /^https?:\/\//i.test(bioUrl)) {
+    try {
+      const bioRes = await fetch(bioUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Waypoint-CRM/1.0)' },
+        redirect: 'follow',
+      });
+      if (bioRes.ok) {
+        const html = await bioRes.text();
+
+        // Extract og:image (most .mil and .gov sites use Open Graph tags)
+        const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+                     || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+        if (ogMatch && ogMatch[1]) {
+          parsed.photoUrl = ogMatch[1];
+        } else {
+          // Fallback: look for a biography headshot img (spaceforce/army/af pattern)
+          const imgMatch = html.match(/<img[^>]+class=["'][^"']*bio(?:graphy)?[^"']*["'][^>]+src=["']([^"']+)["']/i)
+                        || html.match(/<img[^>]+src=["']([^"'?#]+\.(?:jpg|jpeg|png|webp))["'][^>]*>/i);
+          if (imgMatch && imgMatch[1]) {
+            // Resolve relative URLs
+            const base = new URL(bioUrl);
+            parsed.photoUrl = imgMatch[1].startsWith('http') ? imgMatch[1]
+              : imgMatch[1].startsWith('/') ? (base.origin + imgMatch[1])
+              : (base.origin + '/' + imgMatch[1]);
+          }
+        }
+
+        // Extract visible bio text to pass back for reference
+        const textContent = html
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+          .slice(0, 2000);
+        parsed.enrichment.bioScraped = textContent;
+        parsed.enrichment.bioUrlFetched = bioUrl;
+      }
+    } catch (scrapeErr) {
+      // Non-fatal — log but continue
+      parsed.enrichment.bioScrapeError = scrapeErr.message || String(scrapeErr);
+    }
   }
 
   return {
