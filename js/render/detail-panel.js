@@ -406,22 +406,17 @@ function openContactDetailPanel(contactId) {
 
   // ── Contact card ────────────────────────────────────────────
   html += '<div class=”rel-block” style=”display:flex;gap:14px;align-items:flex-start;margin-bottom:4px;”>';
-  // Photo avatar — always render initials div as fallback; img overlays it
+  // Avatar: wrapper clips to circle; initials show if no photo or photo fails
   const _initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
-  const _avatarStyle = 'width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;';
-  const _fallbackDiv = '<div style=”' + _avatarStyle + 'background:var(--surface-alt);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>'
-    + escHtml(_initials) + '</div>';
+  const _wrapStyle = 'position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);';
+  html += '<div style=”' + _wrapStyle + '”>'
+    + '<div style=”position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>' + escHtml(_initials) + '</div>';
   if (contact.photoUrl) {
-    const _imgId = 'cpavatar-' + contactId.replace(/[^a-z0-9]/gi, '');
-    html += '<div style=”position:relative;width:72px;height:72px;flex-shrink:0;”>'
-      + _fallbackDiv.replace('display:flex', 'display:flex;position:absolute;inset:0;')
-      + '<img id=”' + _imgId + '” src=”' + escHtml(contact.photoUrl) + '” alt=”” '
-      + 'style=”' + _avatarStyle + 'object-fit:cover;position:absolute;inset:0;” '
-      + 'onerror=”this.style.display=\'none\'”>'
-      + '</div>';
-  } else {
-    html += _fallbackDiv;
+    html += '<img src=”' + escHtml(contact.photoUrl) + '” alt=”” '
+      + 'style=”position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;” '
+      + 'onerror=”this.style.display=\'none\'”>';
   }
+  html += '</div>';
   // Info block
   html += '<div style=”flex:1;min-width:0;”>';
   if (contact.org || contact.department) {
