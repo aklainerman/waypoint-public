@@ -505,8 +505,10 @@ function openContactDetailPanel(contactId) {
   //    Avoids CORS + Edge Tracking Prevention on the Supabase domain.
   console.log('[photo] contact.photoUrl =', JSON.stringify(contact.photoUrl), '| avatarId =', _avatarId);
   if (contact.photoUrl) {
-    const _wrap = panelBody.querySelector('#' + _avatarId);
-    console.log('[photo] _wrap =', _wrap);
+    const _wrapQ = panelBody.querySelector('#' + _avatarId);
+    const _wrapG = document.getElementById(_avatarId);
+    console.log('[photo] querySelector:', _wrapQ, '| getElementById:', _wrapG);
+    const _wrap = _wrapG || _wrapQ;
     if (_wrap) {
       const _proxyUrl = '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl);
       console.log('[photo] fetching via proxy:', _proxyUrl);
@@ -514,7 +516,7 @@ function openContactDetailPanel(contactId) {
         .then(r => { console.log('[photo] proxy response:', r.status, r.headers.get('content-type')); if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
         .then(blob => {
           console.log('[photo] blob received, size:', blob.size, 'type:', blob.type);
-          if (!panelBody.querySelector('#' + _avatarId)) { console.log('[photo] panel closed before blob applied'); return; }
+          if (!document.getElementById(_avatarId)) { console.log('[photo] panel closed before blob applied'); return; }
           const _objUrl = URL.createObjectURL(blob);
           _wrap.style.backgroundImage = 'url("' + _objUrl + '")';
           _wrap.style.backgroundSize = 'cover';
