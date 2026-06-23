@@ -430,6 +430,19 @@ function _showIntelResult(result, originalText) {
   const engNote = result.engagementNote || '';
   const _scrapedPhoto = result.photoUrl || '';
 
+  // ── Dedup check before modal opens ─────────────────────────────
+  const _exLast = (ex.lastName || '').trim().toLowerCase();
+  const _exFirst = (ex.firstName || '').trim().toLowerCase();
+  let _existingMatch = null;
+  if (_exLast) {
+    const _hits = DB.list('contacts').filter(c => c.lastName && c.lastName.toLowerCase() === _exLast);
+    if (_hits.length === 1) {
+      _existingMatch = _hits[0];
+    } else if (_hits.length > 1 && _exFirst) {
+      _existingMatch = _hits.find(c => c.firstName && c.firstName.toLowerCase() === _exFirst) || _hits[0];
+    }
+  }
+
   const body = document.createElement('div');
 
   // ── Enrichment banner ───────────────────────────────────────
@@ -446,6 +459,20 @@ function _showIntelResult(result, originalText) {
         ${enr.currentRole ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Current role: ${escHtml(enr.currentRole)}</div>` : ''}
         ${enr.bioUrlFetched ? `<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">📋 Bio scraped: <a href="${escHtml(enr.bioUrlFetched)}" target="_blank" rel="noopener" style="color:var(--accent);">${escHtml(enr.bioUrlFetched)}</a></div>` : ''}
         ${_scrapedPhoto ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;"><img src="${escHtml(_scrapedPhoto)}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--border);"><span style="font-size:11px;color:var(--text-dim);">Photo pulled from official bio</span></div>` : ''}
+      </div>`);
+  }
+
+  // ── Existing contact banner ─────────────────────────────────
+  if (_existingMatch) {
+    const _matchName = [_existingMatch.firstName, _existingMatch.lastName].filter(Boolean).join(' ');
+    body.insertAdjacentHTML('beforeend', `
+      <div style="background:#1a3a1a;border:1px solid #2d7a3a;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">🔁</span>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#4caf50;">EXISTING CONTACT FOUND</div>
+          <div style="font-size:13px;color:var(--text);">${escHtml(_matchName)} — saving will update their record and log this engagement.</div>
+          <button id="ai-switch-new" style="margin-top:4px;font-size:11px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">Create as new contact instead</button>
+        </div>
       </div>`);
   }
 
@@ -491,13 +518,15 @@ function _showIntelResult(result, originalText) {
     });
   }
 
+  // Track whether user wants to create new instead of updating existing
+  let _forceNew = false;
+
   openModal({
     title: '✦ AI Log — Confirm Contact',
     body,
-    saveLabel: 'Save Contact',
+    saveLabel: _existingMatch ? 'Update Contact' : 'Save Contact',
     table: null, id: null,
     onSave: () => {
-      // Merge question answers back into fields
       const fieldOverrides = {};
       questions.forEach((q, i) => {
         const inp = document.getElementById('ai-q-' + i);
@@ -508,62 +537,54 @@ function _showIntelResult(result, originalText) {
       const _lastName  = (fieldOverrides.lastName   || document.getElementById('ai-lastName').value   || '').trim();
       if (!_lastName && !_firstName) { alert('At least a name is required.'); return; }
 
-      // Check for existing contact with same last name (case-insensitive)
-      const _existing = _lastName
-        ? DB.list('contacts').filter(c => c.lastName && c.lastName.toLowerCase() === _lastName.toLowerCase())
-        : [];
-      // Narrow further by first name if we have both and multiple hits
-      const _match = _existing.length === 1 ? _existing[0]
-        : _existing.find(c => _firstName && c.firstName && c.firstName.toLowerCase() === _firstName.toLowerCase())
-        || (_existing.length === 1 ? _existing[0] : null);
-
-      const _doSave = (existingId) => {
-        const _base = existingId ? (DB.get('contacts', existingId) || {}) : {};
-        const rec = Object.assign({}, _base, {
-          id: existingId || '',
-          firstName:  _firstName  || _base.firstName  || '',
-          lastName:   _lastName   || _base.lastName   || '',
-          rank:       (fieldOverrides.rank       || document.getElementById('ai-rank').value       || '').trim() || _base.rank       || '',
-          title:      (fieldOverrides.title      || document.getElementById('ai-title').value      || '').trim() || _base.title      || '',
-          org:        (fieldOverrides.org        || document.getElementById('ai-org').value        || '').trim() || _base.org        || '',
-          department: (fieldOverrides.department || document.getElementById('ai-dept').value       || '').trim() || _base.department || '',
-          email:      (fieldOverrides.email      || document.getElementById('ai-email').value      || '').trim() || _base.email      || '',
-          phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim() || _base.phone      || '',
-          notes:      (document.getElementById('ai-notes').value || '').trim() || _base.notes || '',
-          officeIds:  _base.officeIds || [],
-          photoUrl:   _scrapedPhoto || _base.photoUrl || '',
-          linkedinUrl: enr.linkedinHint || _base.linkedinUrl || '',
-          source: _base.source || 'AI Log',
-          lead: _base.lead || '', callsign: _base.callsign || '', unit: _base.unit || '',
-          branch: ex.branch || _base.branch || '', legislator_bioguide_id: _base.legislator_bioguide_id || null,
-        });
-        DB.upsert('contacts', rec);
-        // Auto-log the engagement note
-        const _noteText = (document.getElementById('ai-notes').value || '').trim();
-        if (_noteText) {
-          const today = new Date().toISOString().slice(0, 10);
-          const _cid = rec.id || DB.list('contacts').find(c => c.lastName === rec.lastName && c.firstName === rec.firstName)?.id;
-          if (_cid) {
-            DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: _cid, engaged_at: today, notes: _noteText });
-            DB.upsert('contacts', Object.assign({}, DB.get('contacts', _cid) || rec, { id: _cid, last_engaged_at: today }));
-          }
+      const _useExistingId = (!_forceNew && _existingMatch) ? _existingMatch.id : null;
+      const _base = _useExistingId ? (DB.get('contacts', _useExistingId) || {}) : {};
+      const rec = Object.assign({}, _base, {
+        id: _useExistingId || '',
+        firstName:  _firstName  || _base.firstName  || '',
+        lastName:   _lastName   || _base.lastName   || '',
+        rank:       (fieldOverrides.rank       || document.getElementById('ai-rank').value       || '').trim() || _base.rank       || '',
+        title:      (fieldOverrides.title      || document.getElementById('ai-title').value      || '').trim() || _base.title      || '',
+        org:        (fieldOverrides.org        || document.getElementById('ai-org').value        || '').trim() || _base.org        || '',
+        department: (fieldOverrides.department || document.getElementById('ai-dept').value       || '').trim() || _base.department || '',
+        email:      (fieldOverrides.email      || document.getElementById('ai-email').value      || '').trim() || _base.email      || '',
+        phone:      (fieldOverrides.phone      || document.getElementById('ai-phone').value      || '').trim() || _base.phone      || '',
+        notes:      (document.getElementById('ai-notes').value || '').trim() || _base.notes || '',
+        officeIds:  _base.officeIds || [],
+        photoUrl:   _scrapedPhoto || _base.photoUrl || '',
+        linkedinUrl: enr.linkedinHint || _base.linkedinUrl || '',
+        source: _base.source || 'AI Log',
+        lead: _base.lead || '', callsign: _base.callsign || '', unit: _base.unit || '',
+        branch: ex.branch || _base.branch || '', legislator_bioguide_id: _base.legislator_bioguide_id || null,
+      });
+      DB.upsert('contacts', rec);
+      const _noteText = (document.getElementById('ai-notes').value || '').trim();
+      if (_noteText) {
+        const today = new Date().toISOString().slice(0, 10);
+        const _cid = rec.id || DB.list('contacts').find(c => c.lastName === rec.lastName && c.firstName === rec.firstName)?.id;
+        if (_cid) {
+          DB.upsert('engagements', { id: 'eng_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), contact_id: _cid, engaged_at: today, notes: _noteText });
+          DB.upsert('contacts', Object.assign({}, DB.get('contacts', _cid) || rec, { id: _cid, last_engaged_at: today }));
         }
-        closeModal();
-        refreshAll();
-      };
-
-      if (_match) {
-        const _fullName = [_match.firstName, _match.lastName].filter(Boolean).join(' ');
-        if (confirm(`"${_fullName}" already exists in your contacts.\n\nClick OK to update their record and log this engagement.\nClick Cancel to create a new contact instead.`)) {
-          _doSave(_match.id);
-        } else {
-          _doSave(null);
-        }
-      } else {
-        _doSave(null);
       }
+      closeModal();
+      refreshAll();
     }
   });
+
+  // Wire up "Create as new contact instead" link after modal DOM exists
+  if (_existingMatch) {
+    setTimeout(() => {
+      const btn = document.getElementById('ai-switch-new');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        _forceNew = true;
+        btn.closest('div[style]').style.display = 'none';
+        const saveBtn = document.getElementById('modalSave');
+        if (saveBtn) saveBtn.textContent = 'Save Contact';
+      });
+    }, 0);
+  }
 }
 
 document.getElementById('btnLogEngagement').addEventListener('click', logEngagement);

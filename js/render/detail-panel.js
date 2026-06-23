@@ -500,15 +500,16 @@ function openContactDetailPanel(contactId) {
   }
   panelBody.innerHTML = html;
 
-  // -- Photo: fetch as blob → object URL → CSS background-image.
-  //    Bypasses Edge's lazy-load intervention entirely (no <img> element involved).
+  // -- Photo: route through same-origin proxy → blob URL → CSS background-image.
+  //    Avoids CORS + Edge Tracking Prevention on the Supabase domain.
   if (contact.photoUrl) {
     const _wrap = panelBody.querySelector('#' + _avatarId);
     if (_wrap) {
-      fetch(contact.photoUrl)
+      const _proxyUrl = '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl);
+      fetch(_proxyUrl)
         .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
         .then(blob => {
-          if (!panelBody.querySelector('#' + _avatarId)) return; // panel closed
+          if (!panelBody.querySelector('#' + _avatarId)) return;
           const _objUrl = URL.createObjectURL(blob);
           _wrap.style.backgroundImage = 'url("' + _objUrl + '")';
           _wrap.style.backgroundSize = 'cover';
@@ -516,7 +517,7 @@ function openContactDetailPanel(contactId) {
           const _initialsEl = _wrap.firstElementChild;
           if (_initialsEl) _initialsEl.style.visibility = 'hidden';
         })
-        .catch(err => console.warn('[Waypoint] photo fetch failed:', contact.photoUrl, err));
+        .catch(err => console.warn('[Waypoint] photo proxy failed:', contact.photoUrl, err));
     }
   }
 
