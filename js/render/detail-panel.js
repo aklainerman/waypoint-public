@@ -502,8 +502,10 @@ function openContactDetailPanel(contactId) {
 
   // -- Photo: route through same-origin proxy → blob URL → CSS background-image.
   //    Avoids CORS + Edge Tracking Prevention on the Supabase domain.
+  console.log('[photo] contact.photoUrl =', JSON.stringify(contact.photoUrl), '| avatarId =', _avatarId);
   if (contact.photoUrl) {
     const _wrap = panelBody.querySelector('#' + _avatarId);
+    console.log('[photo] _wrap =', _wrap);
     if (_wrap) {
       const _proxyUrl = '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl);
       console.log('[photo] fetching via proxy:', _proxyUrl);
