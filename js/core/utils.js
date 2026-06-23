@@ -333,7 +333,7 @@ function closeModal() {
 }
 document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('modalCancel').addEventListener('click', closeModal);
-modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
+// Click-outside intentionally disabled — users must use the X button to close.
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalBackdrop.classList.contains('open')) closeModal();
 });
