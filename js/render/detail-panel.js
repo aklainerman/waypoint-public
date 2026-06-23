@@ -406,17 +406,12 @@ function openContactDetailPanel(contactId) {
 
   // ── Contact card ────────────────────────────────────────────
   html += '<div class=”rel-block” style=”display:flex;gap:14px;align-items:flex-start;margin-bottom:4px;”>';
-  // Avatar: wrapper clips to circle; initials show if no photo or photo fails
+  // Avatar: initials always shown; photo injected via JS only after successful load
   const _initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
-  const _wrapStyle = 'position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);';
-  html += '<div style=”' + _wrapStyle + '”>'
-    + '<div style=”position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>' + escHtml(_initials) + '</div>';
-  if (contact.photoUrl) {
-    html += '<img src=”' + escHtml(contact.photoUrl) + '” alt=”” '
-      + 'style=”position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;” '
-      + 'onerror=”this.style.display=\'none\'”>';
-  }
-  html += '</div>';
+  const _avatarId = 'cpa-' + contactId.replace(/[^a-z0-9]/gi, '');
+  html += '<div id=”' + _avatarId + '” style=”position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);”>'
+    + '<div style=”position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>' + escHtml(_initials) + '</div>'
+    + '</div>';
   // Info block
   html += '<div style=”flex:1;min-width:0;”>';
   if (contact.org || contact.department) {
@@ -504,6 +499,21 @@ function openContactDetailPanel(contactId) {
     });
   }
   panelBody.innerHTML = html;
+
+  // -- Photo preload (inject only after confirmed load; avoids broken-img icon) --
+  if (contact.photoUrl) {
+    const _preload = new Image();
+    _preload.onload = () => {
+      const _wrap = panelBody.querySelector('#' + _avatarId);
+      if (!_wrap) return;
+      const _img = document.createElement('img');
+      _img.src = contact.photoUrl;
+      _img.alt = '';
+      _img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;';
+      _wrap.appendChild(_img);
+    };
+    _preload.src = contact.photoUrl;
+  }
 
   // -- Body link wiring --
   panelBody.querySelectorAll('a[data-contact-office]').forEach(a => {
