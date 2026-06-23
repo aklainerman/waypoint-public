@@ -34,7 +34,7 @@
 // ---------------------------------------------------------------
 const RANK_LIST = [
   // ── Army Officers ──────────────────────────────────────────
-  '2LT','1LT','CPT','MAJ','LTC','COL','BG','MG','LTG','GEN','GA',
+  '2LT','1LT','CPT','MAJ','Lt Col','COL','BG','MG','LTG','GEN','GA',
   // ── Army Warrant Officers ──────────────────────────────────
   'WO1','CW2','CW3','CW4','CW5',
   // ── Army Enlisted ──────────────────────────────────────────
@@ -52,11 +52,11 @@ const RANK_LIST = [
   // ── Marine Corps Enlisted ──────────────────────────────────
   'Pvt','PFC','LCpl','Cpl','Sgt','SSgt','GySgt','MSgt','1stSgt','MGySgt','SgtMaj','SgtMajMC',
   // ── Air Force Officers ─────────────────────────────────────
-  '2d Lt','1st Lt','Capt','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen','GAF',
+  '2d Lt','1st Lt','CPT','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen','GAF',
   // ── Air Force Enlisted ─────────────────────────────────────
   'AB','Amn','A1C','SrA','SSgt','TSgt','MSgt','SMSgt','CMSgt','CCM','CMSAF',
   // ── Space Force Officers ───────────────────────────────────
-  '2d Lt','1st Lt','Capt','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen',
+  '2d Lt','1st Lt','CPT','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen',
   // ── Space Force Enlisted (Guardians) ──────────────────────
   'Spc1','Spc2','Spc3','Spc4','Sgt','TSgt','MSgt','SMSgt','CMSgt','CMSgT',
   // ── GS Civilian ────────────────────────────────────────────
