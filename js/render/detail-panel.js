@@ -506,18 +506,21 @@ function openContactDetailPanel(contactId) {
     const _wrap = panelBody.querySelector('#' + _avatarId);
     if (_wrap) {
       const _proxyUrl = '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl);
+      console.log('[photo] fetching via proxy:', _proxyUrl);
       fetch(_proxyUrl)
-        .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+        .then(r => { console.log('[photo] proxy response:', r.status, r.headers.get('content-type')); if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
         .then(blob => {
-          if (!panelBody.querySelector('#' + _avatarId)) return;
+          console.log('[photo] blob received, size:', blob.size, 'type:', blob.type);
+          if (!panelBody.querySelector('#' + _avatarId)) { console.log('[photo] panel closed before blob applied'); return; }
           const _objUrl = URL.createObjectURL(blob);
           _wrap.style.backgroundImage = 'url("' + _objUrl + '")';
           _wrap.style.backgroundSize = 'cover';
           _wrap.style.backgroundPosition = 'center';
           const _initialsEl = _wrap.firstElementChild;
           if (_initialsEl) _initialsEl.style.visibility = 'hidden';
+          console.log('[photo] background-image set ✓');
         })
-        .catch(err => console.warn('[Waypoint] photo proxy failed:', contact.photoUrl, err));
+        .catch(err => console.error('[photo] FAILED:', err, '| proxy url:', _proxyUrl));
     }
   }
 
