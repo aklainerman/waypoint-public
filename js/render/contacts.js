@@ -30,6 +30,56 @@
 //   and other monolith file-scope helpers.
 
 // ---------------------------------------------------------------
+//  Canonical US military + civilian rank list (datalist)
+// ---------------------------------------------------------------
+const RANK_LIST = [
+  // ── Army Officers ──────────────────────────────────────────
+  '2LT','1LT','CPT','MAJ','LTC','COL','BG','MG','LTG','GEN','GA',
+  // ── Army Warrant Officers ──────────────────────────────────
+  'WO1','CW2','CW3','CW4','CW5',
+  // ── Army Enlisted ──────────────────────────────────────────
+  'PVT','PV2','PFC','SPC','CPL','SGT','SSG','SFC','MSG','1SG','SGM','CSM','SMA',
+  // ── Navy / Coast Guard Officers ────────────────────────────
+  'ENS','LTJG','LT','LCDR','CDR','CAPT','RDML','RADM','VADM','ADM','FADM',
+  // ── Navy / Coast Guard Warrant ─────────────────────────────
+  'CWO2','CWO3','CWO4','CWO5',
+  // ── Navy / Coast Guard Enlisted ────────────────────────────
+  'SR','SA','SN','PO3','PO2','PO1','CPO','SCPO','MCPO','MCPON','MCPOCG',
+  // ── Marine Corps Officers ──────────────────────────────────
+  '2ndLt','1stLt','Capt','Maj','LtCol','Col','BGen','MajGen','LtGen','Gen',
+  // ── Marine Corps Warrant ───────────────────────────────────
+  'WO1','CWO2','CWO3','CWO4','CWO5',
+  // ── Marine Corps Enlisted ──────────────────────────────────
+  'Pvt','PFC','LCpl','Cpl','Sgt','SSgt','GySgt','MSgt','1stSgt','MGySgt','SgtMaj','SgtMajMC',
+  // ── Air Force Officers ─────────────────────────────────────
+  '2d Lt','1st Lt','Capt','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen','GAF',
+  // ── Air Force Enlisted ─────────────────────────────────────
+  'AB','Amn','A1C','SrA','SSgt','TSgt','MSgt','SMSgt','CMSgt','CCM','CMSAF',
+  // ── Space Force Officers ───────────────────────────────────
+  '2d Lt','1st Lt','Capt','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen',
+  // ── Space Force Enlisted (Guardians) ──────────────────────
+  'Spc1','Spc2','Spc3','Spc4','Sgt','TSgt','MSgt','SMSgt','CMSgt','CMSgT',
+  // ── GS Civilian ────────────────────────────────────────────
+  'GS-1','GS-2','GS-3','GS-4','GS-5','GS-6','GS-7','GS-8','GS-9','GS-10',
+  'GS-11','GS-12','GS-13','GS-14','GS-15',
+  // ── Senior / Executive Civilian ────────────────────────────
+  'SES','SES-1','SES-2','SES-3','SL','ST',
+  // ── Other ──────────────────────────────────────────────────
+  'Civilian','Contractor','SETA','Fellow',
+];
+// Deduplicate while preserving order
+const RANK_OPTIONS = [...new Set(RANK_LIST)];
+const RANK_DATALIST_ID = 'rankDatalist';
+// Inject datalist once into the document
+(function () {
+  if (document.getElementById(RANK_DATALIST_ID)) return;
+  const dl = document.createElement('datalist');
+  dl.id = RANK_DATALIST_ID;
+  dl.innerHTML = RANK_OPTIONS.map(r => '<option value="' + escHtml(r) + '">').join('');
+  document.body.appendChild(dl);
+})();
+
+// ---------------------------------------------------------------
 //  CONTACTS tab
 // ---------------------------------------------------------------
 function renderContacts() {
@@ -136,7 +186,7 @@ function editContact(id) {
   ));
   body.appendChild(fieldRow(
     field('Callsign', '<input id="f-callsign" value="' + escHtml(c.callsign||'') + '" placeholder="e.g. MAVERICK">'),
-    field('Rank',  '<input id="f-rank"  value="' + escHtml(c.rank||'') + '" placeholder="e.g. Lt Col / Col / SES / Civilian">')
+    field('Rank',  '<input id="f-rank" list="' + RANK_DATALIST_ID + '" value="' + escHtml(c.rank||'') + '" placeholder="Type to search ranks…" autocomplete="off">')
   ));
   body.appendChild(field('Title / Role', '<input id="f-title" value="' + escHtml(c.title||'') + '">'));
   body.appendChild(fieldRow(
@@ -377,10 +427,10 @@ function _showIntelResult(result, originalText) {
   // ── Extracted fields ────────────────────────────────────────
   body.insertAdjacentHTML('beforeend', `<div style="font-size:11px;font-weight:600;letter-spacing:.05em;color:var(--text-dim);margin-bottom:8px;">EXTRACTED CONTACT INFO — review and edit before saving</div>`);
 
-  const fRow = (label, id, val, placeholder) =>
+  const fRow = (label, id, val, placeholder, datalistId) =>
     `<div style="margin-bottom:8px;">
       <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:2px;">${label}</label>
-      <input id="${id}" value="${escHtml(val||'')}" placeholder="${escHtml(placeholder||'')}" style="width:100%;box-sizing:border-box;font-size:13px;">
+      <input id="${id}" value="${escHtml(val||'')}" placeholder="${escHtml(placeholder||'')}" style="width:100%;box-sizing:border-box;font-size:13px;"${datalistId ? ' list="' + escHtml(datalistId) + '" autocomplete="off"' : ''}>
     </div>`;
 
   const grid = document.createElement('div');
@@ -388,7 +438,7 @@ function _showIntelResult(result, originalText) {
   grid.innerHTML =
     fRow('First Name',  'ai-firstName',  ex.firstName,  '') +
     fRow('Last Name',   'ai-lastName',   ex.lastName,   '') +
-    fRow('Rank',        'ai-rank',       ex.rank,       'e.g. Col, BGen, SES') +
+    fRow('Rank',        'ai-rank',       ex.rank,       'e.g. Col, BGen, SES', RANK_DATALIST_ID) +
     fRow('Title / Role','ai-title',      ex.title,      '') +
     fRow('Org',         'ai-org',        ex.org,        'e.g. AFRL, MDA') +
     fRow('Department',  'ai-dept',       ex.department, 'e.g. Directed Energy') +
