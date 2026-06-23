@@ -33,37 +33,31 @@
 //  Canonical US military + civilian rank list (datalist)
 // ---------------------------------------------------------------
 const RANK_LIST = [
-  // ── Army Officers ──────────────────────────────────────────
-  '2LT','1LT','CPT','MAJ','Lt Col','COL','BG','MG','LTG','GEN','GA',
-  // ── Army Warrant Officers ──────────────────────────────────
+  // ── Army / Marine Corps / USSF / Air Force Officers (O1-O10) ──
+  // O1-O6 shared across these branches; flag officers follow same pattern
+  '2nd LT','1st LT','Capt','Maj','Lt Col','Col',
+  'Brig Gen','Maj Gen','Lt Gen','Gen','Gen of Army',
+  // ── Army / Marine Corps Warrant Officers ───────────────────
   'WO1','CW2','CW3','CW4','CW5',
   // ── Army Enlisted ──────────────────────────────────────────
   'PVT','PV2','PFC','SPC','CPL','SGT','SSG','SFC','MSG','1SG','SGM','CSM','SMA',
-  // ── Navy / Coast Guard Officers ────────────────────────────
-  'ENS','LTJG','LT','LCDR','CDR','CAPT','RDML','RADM','VADM','ADM','FADM',
+  // ── Marine Corps Enlisted ──────────────────────────────────
+  'Pvt','PFC','LCpl','Cpl','Sgt','SSgt','GySgt','MSgt','1stSgt','MGySgt','SgtMaj','SgtMajMC',
+  // ── Air Force Enlisted ─────────────────────────────────────
+  'AB','Amn','A1C','SrA','SSgt','TSgt','MSgt','SMSgt','CMSgt','CCM','CMSAF',
+  // ── Space Force Enlisted (Guardians) ──────────────────────
+  'Spc1','Spc2','Spc3','Spc4','Sgt','TSgt','MSgt','SMSgt','CMSgt','CMSgT',
+  // ── Navy / Coast Guard Officers (O1-O10) ───────────────────
+  'ENS','LTJG','LT','LTCDR','CDR','CAPT','RDML','RADM','VADM','ADM','FADM',
   // ── Navy / Coast Guard Warrant ─────────────────────────────
   'CWO2','CWO3','CWO4','CWO5',
   // ── Navy / Coast Guard Enlisted ────────────────────────────
   'SR','SA','SN','PO3','PO2','PO1','CPO','SCPO','MCPO','MCPON','MCPOCG',
-  // ── Marine Corps Officers ──────────────────────────────────
-  '2ndLt','1stLt','Capt','Maj','LtCol','Col','BGen','MajGen','LtGen','Gen',
-  // ── Marine Corps Warrant ───────────────────────────────────
-  'WO1','CWO2','CWO3','CWO4','CWO5',
-  // ── Marine Corps Enlisted ──────────────────────────────────
-  'Pvt','PFC','LCpl','Cpl','Sgt','SSgt','GySgt','MSgt','1stSgt','MGySgt','SgtMaj','SgtMajMC',
-  // ── Air Force Officers ─────────────────────────────────────
-  '2d Lt','1st Lt','CPT','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen','GAF',
-  // ── Air Force Enlisted ─────────────────────────────────────
-  'AB','Amn','A1C','SrA','SSgt','TSgt','MSgt','SMSgt','CMSgt','CCM','CMSAF',
-  // ── Space Force Officers ───────────────────────────────────
-  '2d Lt','1st Lt','CPT','Maj','Lt Col','Col','Brig Gen','Maj Gen','Lt Gen','Gen',
-  // ── Space Force Enlisted (Guardians) ──────────────────────
-  'Spc1','Spc2','Spc3','Spc4','Sgt','TSgt','MSgt','SMSgt','CMSgt','CMSgT',
   // ── GS Civilian ────────────────────────────────────────────
   'GS-1','GS-2','GS-3','GS-4','GS-5','GS-6','GS-7','GS-8','GS-9','GS-10',
   'GS-11','GS-12','GS-13','GS-14','GS-15',
   // ── Senior / Executive Civilian ────────────────────────────
-  'SES','SES-1','SES-2','SES-3','SL','ST',
+  'SES','SL','ST',
   // ── Other ──────────────────────────────────────────────────
   'Civilian','Contractor','SETA','Fellow',
 ];
