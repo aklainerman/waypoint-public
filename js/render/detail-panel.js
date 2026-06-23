@@ -500,25 +500,23 @@ function openContactDetailPanel(contactId) {
   }
   panelBody.innerHTML = html;
 
-  // -- Photo: inject img directly into DOM (hidden) so browser won't defer it as off-screen --
+  // -- Photo: fetch as blob → object URL → CSS background-image.
+  //    Bypasses Edge's lazy-load intervention entirely (no <img> element involved).
   if (contact.photoUrl) {
     const _wrap = panelBody.querySelector('#' + _avatarId);
     if (_wrap) {
-      const _img = document.createElement('img');
-      _img.loading = 'eager';
-      _img.alt = '';
-      _img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;visibility:hidden;';
-      _img.onload = () => {
-        _img.style.visibility = '';
-        const _initialsEl = _wrap.firstElementChild;
-        if (_initialsEl) _initialsEl.style.visibility = 'hidden';
-      };
-      _img.onerror = () => {
-        console.warn('[Waypoint] contact photo failed to load:', contact.photoUrl);
-        _img.remove();
-      };
-      _wrap.appendChild(_img);
-      _img.src = contact.photoUrl;
+      fetch(contact.photoUrl)
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+        .then(blob => {
+          if (!panelBody.querySelector('#' + _avatarId)) return; // panel closed
+          const _objUrl = URL.createObjectURL(blob);
+          _wrap.style.backgroundImage = 'url("' + _objUrl + '")';
+          _wrap.style.backgroundSize = 'cover';
+          _wrap.style.backgroundPosition = 'center';
+          const _initialsEl = _wrap.firstElementChild;
+          if (_initialsEl) _initialsEl.style.visibility = 'hidden';
+        })
+        .catch(err => console.warn('[Waypoint] photo fetch failed:', contact.photoUrl, err));
     }
   }
 
