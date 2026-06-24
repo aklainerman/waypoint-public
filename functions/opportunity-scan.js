@@ -293,7 +293,10 @@ async function scanNasaSbir() {
 }
 
 // ---------------------------------------------------------------------------
-// Source 3: SAM.gov (BAAs + solicitations — requires SAM_GOV_API_KEY)
+// Source 3: SAM.gov
+// Strategy: pull ALL recent DoD/NASA solicitations without keyword pre-filter,
+// score locally. This catches SBIR umbrella entries ("DAF SBIR 26.3") and
+// tech-specific BAAs that don't mention keywords in the SAM.gov title.
 // ---------------------------------------------------------------------------
 async function scanSamGov() {
   if (!process.env.SAM_GOV_API_KEY) {
@@ -302,35 +305,44 @@ async function scanSamGov() {
   }
   const results = [];
   const now  = new Date();
-  const from = new Date(now.getTime() - 90 * 86400000);
+  // 180-day window to catch slow-moving R&D solicitations
+  const from = new Date(now.getTime() - 180 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
-  const SEARCH_TERMS = [
-    'directed energy laser',
-    'space domain awareness',
+  // Pull broad agency / R&D solicitations from target agencies without
+  // keyword filtering — score all results locally against the tech profile.
+  // Use multiple focused agency queries to stay within SAM.gov pagination limits.
+  const AGENCY_QUERIES = [
+    'Department of Air Force SBIR',
+    'Department of Air Force BAA',
+    'Space Force SBIR',
+    'DARPA BAA',
+    'Department of Army SBIR',
+    'Department of Navy SBIR',
+    'Missile Defense Agency SBIR',
+    'NASA SBIR',
+    'directed energy space',
+    'space domain awareness solicitation',
     'power beaming',
-    'emergency communications satellite',
-    'high energy laser space',
-    'SBIR directed energy',
-    'SBIR space domain',
   ];
 
   const seen = new Set();
-  for (const term of SEARCH_TERMS) {
+  for (const q of AGENCY_QUERIES) {
     const params = new URLSearchParams({
       api_key: process.env.SAM_GOV_API_KEY,
-      q: term,
+      q,
       postedFrom: fmtMdy(from),
       postedTo: fmtMdy(now),
-      limit: '50',
+      limit: '100',
     });
     let data;
     try {
       const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`);
-      if (!res.ok) { console.warn('SAM.gov', res.status, 'for term:', term); continue; }
+      if (!res.ok) { console.warn('SAM.gov', res.status, 'for q:', q); continue; }
       data = await res.json();
+      console.log(`SAM.gov q="${q}": ${(data.opportunitiesData||[]).length} results`);
     } catch (e) {
-      console.warn('SAM.gov fetch failed for term', term, ':', e.message);
+      console.warn('SAM.gov fetch failed for q:', q, e.message);
       continue;
     }
     for (const opp of (data.opportunitiesData || [])) {
@@ -340,19 +352,30 @@ async function scanSamGov() {
 
       const title    = opp.title || '';
       const abstract = opp.description || '';
-      const topics   = scoreOpportunity(title, abstract);
-      if (!topics.length) continue;
+
+      // For SBIR umbrella solicitations, title match is enough (e.g. "DAF SBIR 26.3"
+      // with "SBIR" signals relevance even without tech keywords in description)
+      const isSbirEntry = /\bSBIR\b|\bSTTR\b|\bBAA\b/.test(title.toUpperCase());
+      const topics = scoreOpportunity(title, abstract);
+
+      // Accept if: topic keywords match OR it's a SBIR/BAA entry from a target agency
+      const agency = opp.fullParentPathName || opp.organizationName || '';
+      const isTargetAgency = /air force|space force|darpa|army|navy|missile defense|nasa|nro|socom/i.test(agency);
+      if (!topics.length && !(isSbirEntry && isTargetAgency)) continue;
+
+      // Tag with "SBIR Solicitation" topic if no keyword match but it's a relevant SBIR entry
+      const finalTopics = topics.length ? topics : [{ label: 'SBIR/STTR' }];
 
       results.push({
         source: 'sam.gov',
         external_id: noticeId,
         title,
-        agency: opp.fullParentPathName || opp.organizationName || 'DoD',
+        agency,
         type: opp.type || 'Solicitation',
         open_date: opp.postedDate ? opp.postedDate.slice(0, 10) : null,
         due_date:  opp.responseDeadLine ? opp.responseDeadLine.slice(0, 10) : null,
         link: opp.uiLink || `https://sam.gov/opp/${noticeId}/view`,
-        topics,
+        topics: finalTopics,
         abstract: abstract.slice(0, 500),
         pocs: (opp.pointOfContact || []).map(p => p.email).filter(Boolean),
       });
