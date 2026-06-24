@@ -306,15 +306,12 @@ async function scanSamGov() {
   const from = new Date(now.getTime() - 364 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
-  // Queries chosen to match SAM.gov's actual SBIR solicitation title patterns
+  // Keep queries minimal — each SAM.gov call takes 2-3s and we're in a
+  // 10s sync function. Three parallel calls = ~3s total, well within budget.
   const QUERIES = [
-    'SBIR',                          // catches "DAF SBIR 26.3", "Army SBIR 2026.1"
-    'STTR',
-    'broad agency announcement directed energy',
-    'BAA directed energy',
-    'BAA space domain awareness',
-    'BAA power beaming',
-    'BAA emergency communications',
+    'SBIR STTR directed energy space laser',
+    'BAA directed energy space domain awareness power beaming',
+    'SBIR space force laser communications emergency',
   ];
 
   // Run all queries in parallel to stay within Netlify's 10s sync timeout
@@ -327,7 +324,12 @@ async function scanSamGov() {
       limit: '100',
     });
     try {
-      const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
       if (!res.ok) {
         const txt = await res.text();
         return { q, error: `HTTP ${res.status}: ${txt.slice(0, 100)}`, opps: [] };
@@ -335,7 +337,7 @@ async function scanSamGov() {
       const data = await res.json();
       return { q, error: null, opps: data.opportunitiesData || [] };
     } catch (e) {
-      return { q, error: e.message, opps: [] };
+      return { q, error: e.name === 'AbortError' ? 'TIMEOUT (6s)' : e.message, opps: [] };
     }
   };
 
