@@ -32,6 +32,10 @@ const TECH_PROFILE = [
       'laser weapon', 'laser lethality', 'beam control', 'high power laser',
       'kilowatt laser', 'megawatt laser', 'dew', 'directed energy weapon',
       'laser platform', 'laser engagement', 'laser scaling',
+      // space-based DE variants — common in AFRL/USSF SBIR topic titles
+      'space-based laser', 'space based laser', 'space-based directed energy',
+      'space based directed energy', 'space-based hel', 'space based hel',
+      'orbital laser', 'space laser', 'sabel', 'space-based de',
     ],
   },
   {
@@ -117,6 +121,7 @@ function scoreOpportunity(title, description) {
 // ---------------------------------------------------------------------------
 async function scanDodSbir() {
   const results = [];
+  const debug = [];
   const PAGE_SIZE = 100;
   let page = 0;
   let totalPages = 1;
@@ -138,19 +143,22 @@ async function scanDodSbir() {
         headers: { Accept: 'application/json' },
       });
       const text = await r.text();
-      console.log(`DSIP probe ${candidate}: status=${r.status} body_prefix=${text.slice(0, 200)}`);
+      const status = `status=${r.status} body_prefix=${text.slice(0, 100)}`;
+      console.log(`DSIP probe ${candidate}: ${status}`);
+      debug.push(`probe ${candidate}: ${status}`);
       if (r.ok && text.trim().startsWith('{')) {
         workingUrl = candidate;
         break;
       }
     } catch (e) {
       console.warn(`DSIP probe ${candidate} failed:`, e.message);
+      debug.push(`probe ${candidate}: ERROR ${e.message}`);
     }
   }
 
   if (!workingUrl) {
     console.warn('DoD SBIR: no working API URL found — all candidates failed');
-    return results;
+    return { results, debug: ['ERROR: all API candidates failed'] };
   }
   console.log('DoD SBIR: using API URL', workingUrl);
 
@@ -228,8 +236,9 @@ async function scanDodSbir() {
     if (items.length < PAGE_SIZE) break; // last page
   }
 
+  debug.push(`scanned pages 0-${page-1}, found ${results.length} matches`);
   console.log(`DoD SBIR: scanned pages 0-${page}, found ${results.length} matches`);
-  return results;
+  return { results, debug };
 }
 
 // ---------------------------------------------------------------------------
@@ -306,19 +315,21 @@ async function scanSamGov() {
   const from = new Date(now.getTime() - 364 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
-  // Keep queries minimal — each SAM.gov call takes 2-3s and we're in a
-  // 10s sync function. Three parallel calls = ~3s total, well within budget.
-  const QUERIES = [
-    'SBIR STTR directed energy space laser',
-    'BAA directed energy space domain awareness power beaming',
-    'SBIR space force laser communications emergency',
-  ];
+  // NAICS-based queries — more reliable than keyword search because SAM.gov v2
+  // returns empty description fields, making keyword scoring useless. NAICS codes
+  // are always populated. We then filter by agency (Space Force, Air Force, DARPA…)
+  // so we don't flood the DB with unrelated opps.
+  //   541715 — R&D Physical/Engineering Sciences (covers most SBIR/STTR)
+  //   334511 — Search, Detection, Navigation, Guidance Systems
+  //   336414 — Guided Missile & Space Vehicle Manufacturing
+  const NAICS_QUERIES = ['541715', '334511', '336414'];
 
-  // Run all queries in parallel to stay within Netlify's 10s sync timeout
-  const fetcher = async (q) => {
+  // Keep queries parallel — each SAM.gov call takes 2-3s and we're in a
+  // 10s sync function. Three parallel NAICS calls = ~3s total.
+  const fetcher = async (ncode) => {
     const params = new URLSearchParams({
       api_key: process.env.SAM_GOV_API_KEY,
-      q,
+      ncode,
       postedFrom: fmtMdy(from),
       postedTo:   fmtMdy(now),
       limit: '100',
@@ -332,16 +343,16 @@ async function scanSamGov() {
       clearTimeout(timer);
       if (!res.ok) {
         const txt = await res.text();
-        return { q, error: `HTTP ${res.status}: ${txt.slice(0, 100)}`, opps: [] };
+        return { q: `NAICS:${ncode}`, error: `HTTP ${res.status}: ${txt.slice(0, 100)}`, opps: [] };
       }
       const data = await res.json();
-      return { q, error: null, opps: data.opportunitiesData || [] };
+      return { q: `NAICS:${ncode}`, error: null, opps: data.opportunitiesData || [] };
     } catch (e) {
-      return { q, error: e.name === 'AbortError' ? 'TIMEOUT (6s)' : e.message, opps: [] };
+      return { q: `NAICS:${ncode}`, error: e.name === 'AbortError' ? 'TIMEOUT (6s)' : e.message, opps: [] };
     }
   };
 
-  const queryResults = await Promise.all(QUERIES.map(fetcher));
+  const queryResults = await Promise.all(NAICS_QUERIES.map(fetcher));
   const seen = new Set();
   for (const { q, error, opps } of queryResults) {
     if (error) { debug.push(`q="${q}" → ERROR: ${error}`); continue; }
@@ -355,7 +366,12 @@ async function scanSamGov() {
       const abstract = opp.description || '';
       const agency   = opp.fullParentPathName || opp.organizationName || '';
 
-      const isSbirEntry    = /\bSBIR\b|\bSTTR\b|\bBAA\b/i.test(title);
+      // SAM.gov v2 search returns empty description — score on title only, then
+      // fall back to type+agency for SBIR/STTR/BAA entries from target agencies.
+      const oppType        = (opp.type || '').toLowerCase();
+      const isSbirEntry    = /\bSBIR\b|\bSTTR\b|\bBAA\b/i.test(title)
+                          || oppType.includes('sbir') || oppType.includes('sttr')
+                          || oppType.includes('baa') || oppType.includes('presolicitation');
       const isTargetAgency = /air force|space force|darpa|army|navy|missile defense|nasa|nro|socom/i.test(agency);
       const topics         = scoreOpportunity(title, abstract);
 
@@ -438,11 +454,12 @@ async function deduplicateAndInsert(opportunities) {
 // ---------------------------------------------------------------------------
 async function runScan() {
   const start = Date.now();
-  const [dodResults, nasaResults, samOut] = await Promise.all([
+  const [dodOut, nasaResults, samOut] = await Promise.all([
     scanDodSbir(),
     scanNasaSbir(),
     scanSamGov(),
   ]);
+  const dodResults = dodOut.results || [];
   const samResults = samOut.results || [];
   const all = [...dodResults, ...nasaResults, ...samResults];
   const { inserted, skipped } = await deduplicateAndInsert(all);
@@ -455,8 +472,8 @@ async function runScan() {
     sam_matches:  samResults.length,
     elapsed_ms:   Date.now() - start,
     ran_at:       new Date().toISOString(),
-    // Debug info visible in Network tab response until sources are confirmed working
     _debug: {
+      dod: dodOut.debug || [],
       sam: samOut.debug || [],
     },
   };
