@@ -317,8 +317,8 @@ async function scanSamGov() {
     'BAA emergency communications',
   ];
 
-  const seen = new Set();
-  for (const q of QUERIES) {
+  // Run all queries in parallel to stay within Netlify's 10s sync timeout
+  const fetcher = async (q) => {
     const params = new URLSearchParams({
       api_key: process.env.SAM_GOV_API_KEY,
       q,
@@ -326,23 +326,25 @@ async function scanSamGov() {
       postedTo:   fmtMdy(now),
       limit: '100',
     });
-    let data, status;
     try {
       const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`);
-      status = res.status;
       if (!res.ok) {
         const txt = await res.text();
-        debug.push(`q="${q}" → HTTP ${status}: ${txt.slice(0, 100)}`);
-        continue;
+        return { q, error: `HTTP ${res.status}: ${txt.slice(0, 100)}`, opps: [] };
       }
-      data = await res.json();
-      const count = (data.opportunitiesData || []).length;
-      debug.push(`q="${q}" → ${count} results`);
+      const data = await res.json();
+      return { q, error: null, opps: data.opportunitiesData || [] };
     } catch (e) {
-      debug.push(`q="${q}" → ERROR: ${e.message}`);
-      continue;
+      return { q, error: e.message, opps: [] };
     }
-    for (const opp of (data.opportunitiesData || [])) {
+  };
+
+  const queryResults = await Promise.all(QUERIES.map(fetcher));
+  const seen = new Set();
+  for (const { q, error, opps } of queryResults) {
+    if (error) { debug.push(`q="${q}" → ERROR: ${error}`); continue; }
+    debug.push(`q="${q}" → ${opps.length} results`);
+    for (const opp of opps) {
       const noticeId = opp.noticeId || '';
       if (seen.has(noticeId)) continue;
       seen.add(noticeId);
@@ -364,8 +366,8 @@ async function scanSamGov() {
         title,
         agency,
         type: opp.type || 'Solicitation',
-        open_date: opp.postedDate        ? opp.postedDate.slice(0, 10)        : null,
-        due_date:  opp.responseDeadLine  ? opp.responseDeadLine.slice(0, 10)  : null,
+        open_date: opp.postedDate       ? opp.postedDate.slice(0, 10)       : null,
+        due_date:  opp.responseDeadLine ? opp.responseDeadLine.slice(0, 10) : null,
         link: opp.uiLink || `https://sam.gov/opp/${noticeId}/view`,
         topics: finalTopics,
         abstract: abstract.slice(0, 500),
