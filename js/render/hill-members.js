@@ -102,11 +102,11 @@
       var commBadge = '<span class="hill-member-badge" title="Committees">COM ' + commCount + '</span>';
       // and aren't reachable from this scope. Use DB.state directly.
       var _hm = (DB.state && DB.state.hill_meetings) || [];
-      var _hr = (DB.state && DB.state.hill_requests) || [];
       var mtgCount = _hm.filter(function(r){ return r && r.target_type === 'member' && r.target_id === m.bioguide_id; }).length;
-      var reqCount = _hr.filter(function(r){ return r && r.target_type === 'member' && r.target_id === m.bioguide_id; }).length;
-      var mtgBadge = '<span class="hill-member-badge" title="Meetings">MTG ' + mtgCount + '</span>';
-      var reqBadge = '<span class="hill-member-badge" title="Requests">REQ ' + reqCount + '</span>';
+      var mtgsSorted = _hm.filter(function(r){ return r && r.target_type === 'member' && r.target_id === m.bioguide_id; })
+        .sort(function(a,b){ return (b.meeting_date||'').localeCompare(a.meeting_date||''); });
+      var lastDate = mtgsSorted.length ? mtgsSorted[0].meeting_date : (m.last_contacted || null);
+      var dotHtml = (typeof window._engDot === 'function') ? window._engDot(lastDate) : '';
       return '<div class="hill-member-card' + (m.is_priority ? ' priority' : '') + '" data-bioguide="' + esc(m.bioguide_id) + '">'
         + photo
         + '<div class="hill-member-meta">'
@@ -119,10 +119,10 @@
         +     '<span class="hill-member-badge party-' + pk + '">' + esc((m.party || '').slice(0, 1) || '?') + '</span>'
         +     '<span class="hill-member-badge">' + esc(m.chamber === 'senate' ? 'Senate' : 'House') + '</span>'
         +     commBadge
-        +     mtgBadge
-        +     reqBadge
+        +     '<span class="hill-member-badge" title="Engagements">ENG ' + mtgCount + '</span>'
         +     leadHtml
         +   '</div>'
+        +   '<div class="hill-lc-row">' + dotHtml + '</div>'
         + '</div>'
         + '</div>';
     }).join('');
@@ -291,7 +291,7 @@
       + '<div class="hill-mdraw-section"><h4>Outreach</h4>'
       +   '<div class="hill-mdraw-row"><div class="label">Priority</div><div class="val"><label><input type="checkbox" id="hmEditPriority"' + (m.is_priority ? ' checked' : '') + '> Mark as priority</label></div></div>'
       +   '<div class="hill-mdraw-row"><div class="label">Owner</div><div class="val"><input class="hill-mdraw-input" id="hmEditOwner" value="' + esc(m.owner || '') + '" placeholder="Internal owner / lobbyist on file"></div></div>'
-      +   '<div class="hill-mdraw-row"><div class="label">Last contacted</div><div class="val"><input class="hill-mdraw-input" id="hmEditLast" type="date" value="' + esc(m.last_contacted || '') + '"></div></div>'
+      +   '<div class="hill-mdraw-row"><div class="label">Last contacted</div><div class="val"><input class="hill-mdraw-input" id="hmEditLast" type="date" value="' + esc((function(){ var hm=(DB.state&&DB.state.hill_meetings)||[]; var s=hm.filter(function(r){return r&&r.target_type==='member'&&r.target_id===bg;}).sort(function(a,b){return(b.meeting_date||'').localeCompare(a.meeting_date||'');}); return s.length?s[0].meeting_date:(m.last_contacted||''); })()) + '"></div></div>'
       +   '<div class="hill-mdraw-row"><div class="label">Notes</div><div class="val"><textarea class="hill-mdraw-textarea" id="hmEditNotes" placeholder="Meeting notes, asks, relationship status...">' + esc(m.notes || '') + '</textarea></div></div>'
       +   '<div style="margin-top:8px;text-align:right;"><button class="btn primary" id="hmEditSave">Save</button></div>'
       + '</div>'

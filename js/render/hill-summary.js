@@ -25,6 +25,20 @@
   function committeeByTid(t){ return committeesList().find(function (c) { return c && c.thomas_id === t; }); }
 
   // ----- engagements: fetch / add / delete --------------------------
+  function lastContactedForMember(bg) {
+    var meetings = meetingsFor('member', bg);
+    if (meetings.length > 0) return meetings[0].meeting_date; // sorted desc
+    var m = memberByBg(bg);
+    return (m && m.last_contacted) || null;
+  }
+  function _engDot(dateStr) {
+    if (!dateStr) return '<span class="hill-lc-dot none" title="No engagements logged"></span>';
+    var days = (Date.now() - new Date(dateStr).getTime()) / 86400000;
+    var color = days > 180 ? '#c0392b' : days > 90 ? '#e67e22' : '#27ae60';
+    var label = 'Last contact: ' + dateStr + ' · ' + (days > 180 ? '>6 months ago' : days > 90 ? '3-6 months ago' : 'within 3 months');
+    return '<span class="hill-lc-dot" style="background:' + color + ';" title="' + escH(label) + '"></span><span class="hill-lc-date" style="color:' + color + ';">' + escH(dateStr) + '</span>';
+  }
+
   function meetingsFor(targetType, targetId) {
     return meetingsList()
       .filter(function (r) { return r && r.target_type === targetType && r.target_id === targetId; })
@@ -273,6 +287,8 @@
   window.openHillCommitteeDrawer = openHillCommitteeDrawer;
   window.meetingsSectionHtml = meetingsSectionHtml;
   window.requestsSectionHtml = requestsSectionHtml;
+  window.lastContactedForMember = lastContactedForMember;
+  window._engDot = _engDot;
 
   // ----- summary subtab ---------------------------------------------
   function renderHillSummary() {
@@ -317,10 +333,10 @@
         +     '<span class="hill-member-badge party-' + pk + '">' + escH((m.party || '').slice(0, 1) || '?') + '</span>'
         +     '<span class="hill-member-badge">' + escH(m.chamber === 'senate' ? 'Senate' : 'House') + '</span>'
         +     '<span class="hill-member-badge" title="Committees">COM ' + commCount + '</span>'
-        +     '<span class="hill-member-badge" title="Meetings">MTG ' + mtgCount + '</span>'
-        +     '<span class="hill-member-badge" title="Requests">REQ ' + reqCount + '</span>'
+        +     '<span class="hill-member-badge" title="Engagements">ENG ' + mtgCount + '</span>'
         +     leadHtml
         +   '</div>'
+        +   '<div class="hill-lc-row">' + _engDot(lastContactedForMember(m.bioguide_id)) + '</div>'
         + '</div>'
         + '</div>';
     }
@@ -426,21 +442,10 @@
     var newH = (kind === 'meeting') ? meetingsSectionHtml(tt, tid) : requestsSectionHtml(tt, tid);
     var tmp = document.createElement('div'); tmp.innerHTML = newH;
     section.replaceWith(tmp.firstElementChild);
-    // Auto-update last_contacted on the member from the engagement log
+    // Refresh the Last contacted input in the drawer (computed live from meetings)
     if (kind === 'meeting' && tt === 'member') {
-      var remaining = meetingsFor('member', tid);
-      var latestDate = remaining.reduce(function (best, r) {
-        return (r.meeting_date && r.meeting_date > best) ? r.meeting_date : best;
-      }, '');
-      var m = memberByBg(tid);
-      if (m) {
-        m.last_contacted = latestDate || null;
-        if (typeof _hillSaveUpdate === 'function') {
-          _hillSaveUpdate('hill_members', 'bioguide_id', tid, { last_contacted: latestDate || null });
-        }
-        var lcInput = document.getElementById('hmEditLast');
-        if (lcInput) lcInput.value = latestDate || '';
-      }
+      var lcInput = document.getElementById('hmEditLast');
+      if (lcInput) lcInput.value = lastContactedForMember(tid) || '';
     }
     if (typeof renderHillSummary === 'function') renderHillSummary();
   }
