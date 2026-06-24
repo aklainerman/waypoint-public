@@ -298,6 +298,32 @@ function editSol(id) {
   });
 }
 document.getElementById('btnAddSol').addEventListener('click', () => editSol(null));
+
+(function () {
+  var btn = document.getElementById('btnScanOpps');
+  if (!btn) return;
+  btn.addEventListener('click', async function () {
+    btn.disabled = true;
+    var orig = btn.textContent;
+    btn.textContent = '⟳ Scanning…';
+    try {
+      var res = await fetch('/.netlify/functions/opportunity-scan', { method: 'POST' });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Scan failed (' + res.status + ')');
+      var msg = 'Scan complete: ' + data.inserted + ' new opportunit' + (data.inserted === 1 ? 'y' : 'ies') + ' added';
+      if (data.skipped) msg += ', ' + data.skipped + ' already in pipeline';
+      msg += ' (' + Math.round((data.elapsed_ms || 0) / 1000) + 's)';
+      btn.textContent = '✓ ' + (data.inserted ? data.inserted + ' new' : 'Up to date');
+      setTimeout(function () { btn.textContent = orig; btn.disabled = false; }, 4000);
+      if (data.inserted > 0 && typeof refreshAll === 'function') refreshAll();
+      alert(msg);
+    } catch (e) {
+      btn.textContent = orig;
+      btn.disabled = false;
+      alert('Scan error: ' + (e.message || e));
+    }
+  });
+})();
 ['solSearch','solStatusFilter','solTypeFilter','solOfficeFilter','solPriorityOnly'].forEach(id => { var el = document.getElementById(id); if (el) el.addEventListener('input', renderSols); el && el.addEventListener('change', renderSols); });
 attachSorting(document.getElementById('solTable'), 'sols', renderSols);
 
