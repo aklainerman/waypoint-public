@@ -302,8 +302,8 @@ async function scanSamGov() {
   }
   const results = [];
   const now  = new Date();
-  // 365-day window — SBIR solicitations post once and stay open for months
-  const from = new Date(now.getTime() - 365 * 86400000);
+  // 364-day window — SAM.gov rejects exactly 1 year (API bug); keep just under
+  const from = new Date(now.getTime() - 364 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
   // Queries chosen to match SAM.gov's actual SBIR solicitation title patterns
