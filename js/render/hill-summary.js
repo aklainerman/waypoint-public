@@ -445,7 +445,7 @@
     // Refresh the Last contacted input in the drawer (computed live from meetings)
     if (kind === 'meeting' && tt === 'member') {
       var lcInput = document.getElementById('hmEditLast');
-      if (lcInput) lcInput.value = lastContactedForMember(tid) || '';
+      if (lcInput) lcInput.textContent = lastContactedForMember(tid) || '';
     }
     if (typeof renderHillSummary === 'function') renderHillSummary();
   }

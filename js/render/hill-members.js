@@ -291,7 +291,7 @@
       + '<div class="hill-mdraw-section"><h4>Outreach</h4>'
       +   '<div class="hill-mdraw-row"><div class="label">Priority</div><div class="val"><label><input type="checkbox" id="hmEditPriority"' + (m.is_priority ? ' checked' : '') + '> Mark as priority</label></div></div>'
       +   '<div class="hill-mdraw-row"><div class="label">Owner</div><div class="val"><input class="hill-mdraw-input" id="hmEditOwner" value="' + esc(m.owner || '') + '" placeholder="Internal owner / lobbyist on file"></div></div>'
-      +   '<div class="hill-mdraw-row"><div class="label">Last contacted</div><div class="val"><input class="hill-mdraw-input" id="hmEditLast" type="date" value="' + esc((function(){ var hm=(DB.state&&DB.state.hill_meetings)||[]; var s=hm.filter(function(r){return r&&r.target_type==='member'&&r.target_id===bg;}).sort(function(a,b){return(b.meeting_date||'').localeCompare(a.meeting_date||'');}); return s.length?s[0].meeting_date:(m.last_contacted||''); })()) + '"></div></div>'
+      +   '<div class="hill-mdraw-row"><div class="label">Last contacted</div><div class="val"><span id="hmEditLast" style="font-size:12px;color:var(--text);">' + esc((function(){ var hm=(DB.state&&DB.state.hill_meetings)||[]; var s=hm.filter(function(r){return r&&r.target_type==='member'&&r.target_id===bg;}).sort(function(a,b){return(b.meeting_date||'').localeCompare(a.meeting_date||'');}); return s.length?s[0].meeting_date:(m.last_contacted||''); })()) + '</span></div></div>'
       +   '<div class="hill-mdraw-row"><div class="label">Notes</div><div class="val"><textarea class="hill-mdraw-textarea" id="hmEditNotes" placeholder="Meeting notes, asks, relationship status...">' + esc(m.notes || '') + '</textarea></div></div>'
       +   '<div style="margin-top:8px;text-align:right;"><button class="btn primary" id="hmEditSave">Save</button></div>'
       + '</div>'
@@ -304,7 +304,6 @@
       var patch = {
         is_priority:    !!($('hmEditPriority') && $('hmEditPriority').checked),
         owner:          ($('hmEditOwner') || {}).value || null,
-        last_contacted: ($('hmEditLast')  || {}).value || null,
         notes:          ($('hmEditNotes') || {}).value || null,
       };
       Object.assign(m, patch);
