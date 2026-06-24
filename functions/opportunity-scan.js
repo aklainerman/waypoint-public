@@ -426,15 +426,15 @@ async function deduplicateAndInsert(opportunities) {
     ].filter(Boolean);
 
     const row = {
-      title:     opp.title,
-      status:    'Identified',
-      type:      opp.type || 'SBIR',
-      link:      opp.link || null,
-      org:       opp.agency || null,
-      notes:     noteLines.join('\n'),
-      topic:     topicLabel,
-      open_date: opp.open_date || null,
-      due_date:  opp.due_date  || null,
+      id:       crypto.randomUUID(),
+      title:    opp.title,
+      status:   'Identified',
+      type:     opp.type || 'SBIR',
+      link:     opp.link || null,
+      notes:    noteLines.join('\n'),
+      topic:    topicLabel,
+      openDate: opp.open_date || null,
+      dueDate:  opp.due_date  || null,
     };
 
     try {
