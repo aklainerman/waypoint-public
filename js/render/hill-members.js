@@ -310,8 +310,7 @@
       };
       Object.assign(m, patch);
       if (typeof window._hillSaveUpdate === 'function') window._hillSaveUpdate('hill_members', 'bioguide_id', m.bioguide_id, patch);
-      saveBtn.textContent = 'Saved';
-      setTimeout(function () { saveBtn.textContent = 'Save'; }, 1200);
+      panel.classList.remove('open');
       renderHillMembers();
     };
 
