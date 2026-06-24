@@ -118,7 +118,7 @@
       + '<h4>Engagements <span class="count" style="font-weight:400;color:var(--text-dim);">(' + rows.length + ')</span></h4>'
       + '<div class="hill-eng-list">' + listH + '</div>'
       + '<div class="hill-eng-add">'
-      +   '<input type="date" class="hm-date" value="' + today + '" style="flex:0 0 auto;">'
+      +   '<input type="date" class="hm-date" value="' + today + '" max="' + today + '" style="flex:0 0 auto;">'
       +   '<select class="hm-type" style="flex:0 0 auto;"><option>Meeting</option><option>Phone</option><option>Email</option><option>In-Person</option><option>Conference</option><option>Other</option></select>'
       +   '<textarea class="hm-notes" placeholder="Notes (optional)" rows="2" style="width:100%;box-sizing:border-box;margin-top:4px;font-size:12px;padding:4px 6px;resize:vertical;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;color:var(--text);"></textarea>'
       +   '<button class="hm-add" style="margin-top:4px;">+ Log engagement</button>'
@@ -418,6 +418,8 @@
         var engDate = d ? d.value : new Date().toISOString().slice(0, 10);
         var engType = tyEl ? tyEl.value : 'Meeting';
         var engNotes = notesEl ? notesEl.value.trim() : '';
+        var today = new Date().toISOString().slice(0, 10);
+        if (engDate > today) { alert('Engagement date cannot be in the future. Please select today or a past date.'); return; }
         addMeeting(tt, tid, { date: engDate, title: engType, notes: engNotes || null }).then(function () { rerenderEngagement(engSec, 'meeting'); });
         return;
       }
