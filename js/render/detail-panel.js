@@ -415,8 +415,8 @@ function openContactDetailPanel(contactId) {
   const _imgTag = _proxyPhotoSrc
     ? '<img src=' + _dq + _proxyPhotoSrc + _dq + ' loading=' + _dq + 'eager' + _dq + ' alt=' + _dq + _dq + ' style=' + _dq + 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;' + _dq + ' onerror=' + _dq + 'this.style.display=\'none\'' + _dq + '>'
     : '';
-  html += '<div style=”position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);”>'
-    + '<div style=”position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>' + escHtml(_initials) + '</div>'
+  html += '<div style=\'position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);\'>'
+    + '<div style=\'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);\'>' + escHtml(_initials) + '</div>'
     + _imgTag
     + '</div>';
   // Info block
