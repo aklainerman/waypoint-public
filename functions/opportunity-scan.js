@@ -294,55 +294,52 @@ async function scanNasaSbir() {
 
 // ---------------------------------------------------------------------------
 // Source 3: SAM.gov
-// Strategy: pull ALL recent DoD/NASA solicitations without keyword pre-filter,
-// score locally. This catches SBIR umbrella entries ("DAF SBIR 26.3") and
-// tech-specific BAAs that don't mention keywords in the SAM.gov title.
 // ---------------------------------------------------------------------------
 async function scanSamGov() {
+  const debug = [];
   if (!process.env.SAM_GOV_API_KEY) {
-    console.log('SAM.gov skipped: no SAM_GOV_API_KEY');
-    return [];
+    return { results: [], debug: ['SKIPPED: SAM_GOV_API_KEY not set'] };
   }
   const results = [];
   const now  = new Date();
-  // 180-day window to catch slow-moving R&D solicitations
-  const from = new Date(now.getTime() - 180 * 86400000);
+  // 365-day window — SBIR solicitations post once and stay open for months
+  const from = new Date(now.getTime() - 365 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
-  // Pull broad agency / R&D solicitations from target agencies without
-  // keyword filtering — score all results locally against the tech profile.
-  // Use multiple focused agency queries to stay within SAM.gov pagination limits.
-  const AGENCY_QUERIES = [
-    'Department of Air Force SBIR',
-    'Department of Air Force BAA',
-    'Space Force SBIR',
-    'DARPA BAA',
-    'Department of Army SBIR',
-    'Department of Navy SBIR',
-    'Missile Defense Agency SBIR',
-    'NASA SBIR',
-    'directed energy space',
-    'space domain awareness solicitation',
-    'power beaming',
+  // Queries chosen to match SAM.gov's actual SBIR solicitation title patterns
+  const QUERIES = [
+    'SBIR',                          // catches "DAF SBIR 26.3", "Army SBIR 2026.1"
+    'STTR',
+    'broad agency announcement directed energy',
+    'BAA directed energy',
+    'BAA space domain awareness',
+    'BAA power beaming',
+    'BAA emergency communications',
   ];
 
   const seen = new Set();
-  for (const q of AGENCY_QUERIES) {
+  for (const q of QUERIES) {
     const params = new URLSearchParams({
       api_key: process.env.SAM_GOV_API_KEY,
       q,
       postedFrom: fmtMdy(from),
-      postedTo: fmtMdy(now),
+      postedTo:   fmtMdy(now),
       limit: '100',
     });
-    let data;
+    let data, status;
     try {
       const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`);
-      if (!res.ok) { console.warn('SAM.gov', res.status, 'for q:', q); continue; }
+      status = res.status;
+      if (!res.ok) {
+        const txt = await res.text();
+        debug.push(`q="${q}" → HTTP ${status}: ${txt.slice(0, 100)}`);
+        continue;
+      }
       data = await res.json();
-      console.log(`SAM.gov q="${q}": ${(data.opportunitiesData||[]).length} results`);
+      const count = (data.opportunitiesData || []).length;
+      debug.push(`q="${q}" → ${count} results`);
     } catch (e) {
-      console.warn('SAM.gov fetch failed for q:', q, e.message);
+      debug.push(`q="${q}" → ERROR: ${e.message}`);
       continue;
     }
     for (const opp of (data.opportunitiesData || [])) {
@@ -352,28 +349,23 @@ async function scanSamGov() {
 
       const title    = opp.title || '';
       const abstract = opp.description || '';
+      const agency   = opp.fullParentPathName || opp.organizationName || '';
 
-      // For SBIR umbrella solicitations, title match is enough (e.g. "DAF SBIR 26.3"
-      // with "SBIR" signals relevance even without tech keywords in description)
-      const isSbirEntry = /\bSBIR\b|\bSTTR\b|\bBAA\b/.test(title.toUpperCase());
-      const topics = scoreOpportunity(title, abstract);
-
-      // Accept if: topic keywords match OR it's a SBIR/BAA entry from a target agency
-      const agency = opp.fullParentPathName || opp.organizationName || '';
+      const isSbirEntry    = /\bSBIR\b|\bSTTR\b|\bBAA\b/i.test(title);
       const isTargetAgency = /air force|space force|darpa|army|navy|missile defense|nasa|nro|socom/i.test(agency);
+      const topics         = scoreOpportunity(title, abstract);
+
       if (!topics.length && !(isSbirEntry && isTargetAgency)) continue;
 
-      // Tag with "SBIR Solicitation" topic if no keyword match but it's a relevant SBIR entry
       const finalTopics = topics.length ? topics : [{ label: 'SBIR/STTR' }];
-
       results.push({
         source: 'sam.gov',
         external_id: noticeId,
         title,
         agency,
         type: opp.type || 'Solicitation',
-        open_date: opp.postedDate ? opp.postedDate.slice(0, 10) : null,
-        due_date:  opp.responseDeadLine ? opp.responseDeadLine.slice(0, 10) : null,
+        open_date: opp.postedDate        ? opp.postedDate.slice(0, 10)        : null,
+        due_date:  opp.responseDeadLine  ? opp.responseDeadLine.slice(0, 10)  : null,
         link: opp.uiLink || `https://sam.gov/opp/${noticeId}/view`,
         topics: finalTopics,
         abstract: abstract.slice(0, 500),
@@ -381,8 +373,8 @@ async function scanSamGov() {
       });
     }
   }
-  console.log(`SAM.gov: found ${results.length} matches`);
-  return results;
+  debug.push(`Total SAM.gov matches: ${results.length}`);
+  return { results, debug };
 }
 
 // ---------------------------------------------------------------------------
@@ -442,14 +434,15 @@ async function deduplicateAndInsert(opportunities) {
 // ---------------------------------------------------------------------------
 async function runScan() {
   const start = Date.now();
-  const [dodResults, nasaResults, samResults] = await Promise.all([
+  const [dodResults, nasaResults, samOut] = await Promise.all([
     scanDodSbir(),
     scanNasaSbir(),
     scanSamGov(),
   ]);
+  const samResults = samOut.results || [];
   const all = [...dodResults, ...nasaResults, ...samResults];
   const { inserted, skipped } = await deduplicateAndInsert(all);
-  const result = {
+  return {
     scanned:      all.length,
     inserted,
     skipped,
@@ -458,9 +451,11 @@ async function runScan() {
     sam_matches:  samResults.length,
     elapsed_ms:   Date.now() - start,
     ran_at:       new Date().toISOString(),
+    // Debug info visible in Network tab response until sources are confirmed working
+    _debug: {
+      sam: samOut.debug || [],
+    },
   };
-  console.log('opportunity-scan complete', JSON.stringify(result));
-  return result;
 }
 
 // ---------------------------------------------------------------------------
