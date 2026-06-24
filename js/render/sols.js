@@ -70,7 +70,7 @@ function renderSols() {
     title: r => r.title, officeId: r => officeName(r.officeId), value: r => Number(r.value||0),
     openDate: r => r.openDate || '', dueDate: r => r.dueDate || '', awardDate: r => r.awardDate || '', orgContacts: r => r.officeId ? DB.list('contacts').filter(c => (c.officeIds||[]).includes(r.officeId)).length : 0, type: r => r.type, phase: r => r.phase,
     status: r => r.status, alignment: r => Number(r.alignment||0),
-    department: r => solicitationDepartment(r),
+    department: r => r.department || solicitationDepartment(r),
     priority: r => (r.is_priority ? 1 : 0),
     owner:    r => r.owner || '',
     probability:    r => Number(r.probability_pct||0),
@@ -84,8 +84,8 @@ function renderSols() {
     return '<tr data-id="' + s.id + '">'
     + '<td style="text-align:center;"><a class="sol-prio-star" data-sol-prio="' + escAttr(s.id) + '" title="' + (s.is_priority?'Unmark priority':'Mark priority') + '" style="cursor:pointer;color:' + (s.is_priority?'var(--priority)':'var(--text-muted)') + ';font-size:14px;line-height:1;text-decoration:none;">' + (s.is_priority?'★':'☆') + '</a></td>'
     + '<td><strong>' + escHtml(s.title) + '</strong>' + (s.link ? ' <a href="' + escHtml(s.link) + '" target="_blank" rel="noopener" title="Open link">↗</a>' : '') + '</td>'
-    + '<td>' + orgCell(s.officeId) + '</td>'
-    + '<td>' + deptBadge(solicitationDepartment(s)) + '</td>'
+    + '<td>' + escHtml(s.org || officeName(s.officeId) || '—') + '</td>'
+    + '<td>' + (s.department ? deptBadge(s.department) : deptBadge(solicitationDepartment(s))) + '</td>'
     + '<td>' + (s.owner ? '<span class="card-tag">' + escHtml(s.owner) + '</span>' : '<span style="color:var(--text-muted);">—</span>') + '</td>'
     + '<td>' + (s.officeId ? DB.list('contacts').filter(c => (c.officeIds||[]).includes(s.officeId)).length : 0) + '</td>'
     + '<td>' + fmtMoney(s.value) + '</td>'
@@ -115,7 +115,8 @@ function editSol(id) {
   const body = document.createElement('div');
   body.appendChild(field('Title', '<input id="f-title" value="' + escHtml(s.title||'') + '">'));
   body.appendChild(fieldRow(
-    field('Office', selectOfficesHtml('f-officeId', s.officeId)),
+    field('Org', '<input id="f-org" value="' + escHtml(s.org||officeName(s.officeId)||'') + '" placeholder="e.g. Space Systems Command">'),
+    field('Department', '<input id="f-department" value="' + escHtml(s.department||'') + '" placeholder="e.g. DEPARTMENT OF THE AIR FORCE">'),
     field('Link / URL', '<input id="f-link" value="' + escHtml(s.link||'') + '">')
   ));
   body.appendChild(fieldRow(
@@ -245,9 +246,11 @@ function editSol(id) {
       }
       const rec = {
         id: s.id || '',
-        title:    document.getElementById('f-title').value.trim(),
-        link:     document.getElementById('f-link').value.trim(),
-        officeId: document.getElementById('f-officeId').value,
+        title:      document.getElementById('f-title').value.trim(),
+        org:        document.getElementById('f-org').value.trim(),
+        department: document.getElementById('f-department').value.trim(),
+        link:       document.getElementById('f-link').value.trim(),
+        officeId:   s.officeId || '',
         value:    Number(document.getElementById('f-value').value) || 0,
         openDate: document.getElementById('f-openDate').value,
         dueDate:  document.getElementById('f-dueDate').value,
