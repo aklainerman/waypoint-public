@@ -406,11 +406,14 @@ function openContactDetailPanel(contactId) {
 
   // ── Contact card ────────────────────────────────────────────
   html += '<div class=”rel-block” style=”display:flex;gap:14px;align-items:flex-start;margin-bottom:4px;”>';
-  // Avatar: initials always shown; photo injected via JS only after successful load
+  // Avatar: initials as base layer; proxy img on top (same-origin avoids CORS/tracking-prevention)
   const _initials = ((contact.firstName||'').charAt(0) + (contact.lastName||'').charAt(0)).toUpperCase() || '?';
-  const _avatarId = 'cpa-' + contactId.replace(/[^a-z0-9]/gi, '');
-  html += '<div id=”' + _avatarId + '” style=”position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);”>'
+  const _proxyPhotoSrc = contact.photoUrl
+    ? '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl)
+    : '';
+  html += '<div style=”position:relative;width:72px;height:72px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;overflow:hidden;background:var(--surface-alt);”>'
     + '<div style=”position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--text-muted);”>' + escHtml(_initials) + '</div>'
+    + (_proxyPhotoSrc ? '<img src=”' + _proxyPhotoSrc + '” loading=”eager” alt=”” style=”position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;” onerror=”this.style.display=\'none\'”>' : '')
     + '</div>';
   // Info block
   html += '<div style=”flex:1;min-width:0;”>';
@@ -499,35 +502,6 @@ function openContactDetailPanel(contactId) {
     });
   }
   panelBody.innerHTML = html;
-  console.log('[photo] panelBody tag/id:', panelBody && panelBody.tagName, panelBody && panelBody.id, '| innerHTML starts:', panelBody.innerHTML.slice(0, 300));
-
-  // -- Photo: route through same-origin proxy → blob URL → CSS background-image.
-  //    Avoids CORS + Edge Tracking Prevention on the Supabase domain.
-  console.log('[photo] contact.photoUrl =', JSON.stringify(contact.photoUrl), '| avatarId =', _avatarId);
-  if (contact.photoUrl) {
-    const _wrapQ = panelBody.querySelector('#' + _avatarId);
-    const _wrapG = document.getElementById(_avatarId);
-    console.log('[photo] querySelector:', _wrapQ, '| getElementById:', _wrapG);
-    const _wrap = _wrapG || _wrapQ;
-    if (_wrap) {
-      const _proxyUrl = '/.netlify/functions/photo-proxy?url=' + encodeURIComponent(contact.photoUrl);
-      console.log('[photo] fetching via proxy:', _proxyUrl);
-      fetch(_proxyUrl)
-        .then(r => { console.log('[photo] proxy response:', r.status, r.headers.get('content-type')); if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
-        .then(blob => {
-          console.log('[photo] blob received, size:', blob.size, 'type:', blob.type);
-          if (!document.getElementById(_avatarId)) { console.log('[photo] panel closed before blob applied'); return; }
-          const _objUrl = URL.createObjectURL(blob);
-          _wrap.style.backgroundImage = 'url("' + _objUrl + '")';
-          _wrap.style.backgroundSize = 'cover';
-          _wrap.style.backgroundPosition = 'center';
-          const _initialsEl = _wrap.firstElementChild;
-          if (_initialsEl) _initialsEl.style.visibility = 'hidden';
-          console.log('[photo] background-image set ✓');
-        })
-        .catch(err => console.error('[photo] FAILED:', err, '| proxy url:', _proxyUrl));
-    }
-  }
 
   // -- Body link wiring --
   panelBody.querySelectorAll('a[data-contact-office]').forEach(a => {
