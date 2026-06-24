@@ -288,7 +288,6 @@
       + (m.bio_summary ? '<div class="hill-mdraw-section"><h4>Bio</h4><div style="font-size:11.5px;color:var(--text);line-height:1.4;">' + esc(m.bio_summary) + '</div></div>' : '')
       + '<div class="hill-mdraw-section"><h4>Committees (' + membershipsForMember(bg).length + ')</h4><ul style="margin:0;padding-left:18px;font-size:11.5px;">' + (rows || '<li style="list-style:none;color:var(--text-dim);">None on file.</li>') + '</ul></div>'
       + (typeof window.meetingsSectionHtml === 'function' ? window.meetingsSectionHtml('member', bg) : '')
-      + (typeof window.requestsSectionHtml === 'function' ? window.requestsSectionHtml('member', bg) : '')
       + '<div class="hill-mdraw-section"><h4>Outreach</h4>'
       +   '<div class="hill-mdraw-row"><div class="label">Priority</div><div class="val"><label><input type="checkbox" id="hmEditPriority"' + (m.is_priority ? ' checked' : '') + '> Mark as priority</label></div></div>'
       +   '<div class="hill-mdraw-row"><div class="label">Owner</div><div class="val"><input class="hill-mdraw-input" id="hmEditOwner" value="' + esc(m.owner || '') + '" placeholder="Internal owner / lobbyist on file"></div></div>'

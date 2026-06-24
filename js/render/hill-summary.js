@@ -93,19 +93,21 @@
       ? rows.map(function (r) {
           return '<div class="hill-eng-item" data-eng-id="' + escH(r.id) + '" data-eng-type="meeting">'
             + '<span class="d">' + escH(r.meeting_date || '') + '</span>'
-            + '<span class="t">' + escH(r.title || '(untitled)') + '</span>'
-            + '<span class="del" title="Delete">&times;</span>'
+            + '<span class="t">' + escH(r.title || 'Meeting') + '</span>'
+            + '<span class="del" title="Remove">×</span>'
+            + (r.notes ? '<div class="hill-eng-notes">' + escH(r.notes) + '</div>' : '')
             + '</div>';
         }).join('')
-      : '<div class="hill-eng-empty">No meetings logged yet.</div>';
+      : '<div class="hill-eng-empty">No engagements logged yet.</div>';
     var today = new Date().toISOString().slice(0, 10);
     return '<div class="hill-eng-section" data-eng-section="meeting" data-target-type="' + escH(targetType) + '" data-target-id="' + escH(targetId) + '">'
-      + '<h4>Meetings <span class="count" style="font-weight:400;color:var(--text-dim);">(' + rows.length + ')</span></h4>'
+      + '<h4>Engagements <span class="count" style="font-weight:400;color:var(--text-dim);">(' + rows.length + ')</span></h4>'
       + '<div class="hill-eng-list">' + listH + '</div>'
       + '<div class="hill-eng-add">'
-      +   '<input type="date" class="hm-date" value="' + today + '">'
-      +   '<input type="text" class="title hm-title" placeholder="Meeting title or summary">'
-      +   '<button class="hm-add">+ Log meeting</button>'
+      +   '<input type="date" class="hm-date" value="' + today + '" style="flex:0 0 auto;">'
+      +   '<select class="hm-type" style="flex:0 0 auto;"><option>Meeting</option><option>Phone</option><option>Email</option><option>In-Person</option><option>Conference</option><option>Other</option></select>'
+      +   '<textarea class="hm-notes" placeholder="Notes (optional)" rows="2" style="width:100%;box-sizing:border-box;margin-top:4px;font-size:12px;padding:4px 6px;resize:vertical;background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;color:var(--text);"></textarea>'
+      +   '<button class="hm-add" style="margin-top:4px;">+ Log engagement</button>'
       + '</div>'
       + '</div>';
   }
@@ -394,9 +396,13 @@
     if (engSec) {
       var tt = engSec.dataset.targetType, tid = engSec.dataset.targetId;
       if (e.target.classList && e.target.classList.contains('hm-add')) {
-        var d = engSec.querySelector('.hm-date'), tEl = engSec.querySelector('.hm-title');
-        if (!tEl.value.trim()) return;
-        addMeeting(tt, tid, { date: d.value, title: tEl.value.trim() }).then(function () { rerenderEngagement(engSec, 'meeting'); });
+        var d = engSec.querySelector('.hm-date');
+        var tyEl = engSec.querySelector('.hm-type');
+        var notesEl = engSec.querySelector('.hm-notes');
+        var engDate = d ? d.value : new Date().toISOString().slice(0, 10);
+        var engType = tyEl ? tyEl.value : 'Meeting';
+        var engNotes = notesEl ? notesEl.value.trim() : '';
+        addMeeting(tt, tid, { date: engDate, title: engType, notes: engNotes || null }).then(function () { rerenderEngagement(engSec, 'meeting'); });
         return;
       }
       if (e.target.classList && e.target.classList.contains('hr-add')) {
@@ -420,6 +426,22 @@
     var newH = (kind === 'meeting') ? meetingsSectionHtml(tt, tid) : requestsSectionHtml(tt, tid);
     var tmp = document.createElement('div'); tmp.innerHTML = newH;
     section.replaceWith(tmp.firstElementChild);
+    // Auto-update last_contacted on the member from the engagement log
+    if (kind === 'meeting' && tt === 'member') {
+      var remaining = meetingsFor('member', tid);
+      var latestDate = remaining.reduce(function (best, r) {
+        return (r.meeting_date && r.meeting_date > best) ? r.meeting_date : best;
+      }, '');
+      var m = memberByBg(tid);
+      if (m) {
+        m.last_contacted = latestDate || null;
+        if (typeof _hillSaveUpdate === 'function') {
+          _hillSaveUpdate('hill_members', 'bioguide_id', tid, { last_contacted: latestDate || null });
+        }
+        var lcInput = document.getElementById('hmEditLast');
+        if (lcInput) lcInput.value = latestDate || '';
+      }
+    }
     if (typeof renderHillSummary === 'function') renderHillSummary();
   }
 
