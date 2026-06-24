@@ -121,49 +121,92 @@ async function scanDodSbir() {
   let page = 0;
   let totalPages = 1;
 
-  // Topic-code prefix check: SDA = 'sda' in title, DE = 'directed energy' etc.
-  // We pull all open topics (no keyword filter) and score locally to avoid
-  // missing anything due to API keyword mismatch.
+  // Try multiple known API URL patterns for the DSIP portal — the backend
+  // has changed paths across portal versions. We probe the first page with
+  // each candidate until one returns parseable JSON, then continue with that.
+  const API_CANDIDATES = [
+    'https://www.dodsbirsttr.mil/topics-app/api/public/topics/',
+    'https://www.dodsbirsttr.mil/submissions/api/public/topics/',
+    'https://www.dodsbirsttr.mil/api/public/topics/',
+  ];
+  let workingUrl = null;
 
-  while (page < totalPages && page < 5) { // cap at 500 topics to avoid runaway
+  for (const candidate of API_CANDIDATES) {
+    try {
+      const testParams = new URLSearchParams({ page: '0', size: '5' });
+      const r = await fetch(`${candidate}?${testParams}`, {
+        headers: { Accept: 'application/json' },
+      });
+      const text = await r.text();
+      console.log(`DSIP probe ${candidate}: status=${r.status} body_prefix=${text.slice(0, 200)}`);
+      if (r.ok && text.trim().startsWith('{')) {
+        workingUrl = candidate;
+        break;
+      }
+    } catch (e) {
+      console.warn(`DSIP probe ${candidate} failed:`, e.message);
+    }
+  }
+
+  if (!workingUrl) {
+    console.warn('DoD SBIR: no working API URL found — all candidates failed');
+    return results;
+  }
+  console.log('DoD SBIR: using API URL', workingUrl);
+
+  while (page < totalPages && page < 5) {
     const params = new URLSearchParams({
       page: String(page),
       size: String(PAGE_SIZE),
-      // Only open solicitations
       'solicitation.status': 'OPEN',
     });
     let data;
     try {
-      const res = await fetch(
-        `https://www.dodsbirsttr.mil/topics-app/api/public/topics/?${params}`,
-        {
-          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        }
-      );
+      const res = await fetch(`${workingUrl}?${params}`, {
+        headers: { Accept: 'application/json' },
+      });
+      const text = await res.text();
       if (!res.ok) {
-        console.warn('DoD SBIR topics API returned', res.status, 'page', page);
+        console.warn('DoD SBIR topics API returned', res.status, 'page', page, 'body:', text.slice(0, 200));
         break;
       }
-      data = await res.json();
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.warn('DoD SBIR JSON parse failed page', page, 'body_prefix:', text.slice(0, 300));
+        break;
+      }
+      console.log(`DoD SBIR page ${page}: top-level keys=${Object.keys(data).join(',')}`);
     } catch (e) {
       console.warn('DoD SBIR topics fetch failed page', page, ':', e.message);
       break;
     }
 
-    const items = data.content || data.topics || (Array.isArray(data) ? data : []);
-    totalPages = data.totalPages || 1;
+    // Log the structure of the first item so we can tune field names
+    const items = data.content || data.topics || data.data || data.results
+               || data.topicList || (Array.isArray(data) ? data : []);
+    totalPages = data.totalPages || data.total_pages || data.pageCount || 1;
+    if (page === 0) {
+      console.log(`DoD SBIR first item keys: ${items.length ? Object.keys(items[0]).join(',') : 'EMPTY'}`);
+    }
 
     for (const t of items) {
-      const title       = t.title || t.topicTitle || '';
-      const description = t.description || t.objective || t.abstract || t.topicDescription || '';
-      const topicCode   = t.topicCode || t.code || t.solicitation_number || '';
-      const branch      = t.branch || t.agency || t.component || '';
-      const program     = t.program || 'SBIR';
-      const openDate    = t.openDate || t.open_date || (t.solicitation && t.solicitation.openDate) || '';
-      const closeDate   = t.closeDate || t.close_date || (t.solicitation && t.solicitation.closeDate) || '';
-      const link        = topicCode
+      const title       = t.title || t.topicTitle || t.topic_title || t.name || '';
+      const description = t.description || t.objective || t.abstract
+                       || t.topicDescription || t.topic_description
+                       || t.details || t.content || '';
+      const topicCode   = t.topicCode || t.topic_code || t.code
+                       || t.number || t.solicitation_number || t.topicNumber || '';
+      const branch      = t.branch || t.agency || t.component
+                       || t.service || t.program_office || '';
+      const program     = t.program || t.programType || 'SBIR';
+      const openDate    = t.openDate || t.open_date
+                       || (t.solicitation && (t.solicitation.openDate || t.solicitation.open_date)) || '';
+      const closeDate   = t.closeDate || t.close_date || t.dueDate || t.due_date
+                       || (t.solicitation && (t.solicitation.closeDate || t.solicitation.close_date)) || '';
+      const link        = t.url || t.link || (topicCode
         ? `https://www.dodsbirsttr.mil/topics-app/topic-details/${encodeURIComponent(topicCode)}`
-        : '';
+        : '');
 
       const topics = scoreOpportunity(title, description);
       if (!topics.length) continue;
