@@ -2,44 +2,46 @@
 //
 // Scheduled (Mon + Wed 9 AM UTC) AND manual POST trigger.
 //
-// Scans SBIR.gov and SAM.gov for open opportunities matching the company's
-// tech profile (HE DE lasers, SDA, power beaming, emergency comms) from
-// target agencies (DoD, NASA, DARPA, NRO, Space Force, AFRL, MDA).
+// Sources:
+//   1. DoD SBIR/STTR Innovation Portal (dodsbirsttr.mil) — DoD/DAF/Army/Navy topics
+//   2. NASA SBIR portal (sbir.nasa.gov)
+//   3. SAM.gov — BAAs and broader solicitations (requires SAM_GOV_API_KEY)
 //
-// Deduplicates against existing solicitations by external URL.
-// Inserts new matches into the `solicitations` table with status='Identified'
-// and source='auto-scan'.
+// Tech profile: HE DE lasers · SDA · Power beaming · Emergency comms
+// Target agencies: DoD (all services), NASA, DARPA, NRO, Space Force, AFRL, MDA
 //
-// AWS-portable: no Netlify-specific APIs used in core logic. Swap the
-// exported handler for a Lambda handler when migrating to AWS.
+// Deduplicates by link/topic-code against existing solicitations table.
+// Inserts new matches with status='Identified', source noted in notes field.
 //
-// Required env vars (same Supabase vars used by scout):
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_ROLE_KEY  (preferred) or SUPABASE_ANON_KEY
+// AWS-portable: no Netlify-specific APIs in core logic.
+//
+// Required env vars:
+//   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY)
 // Optional:
-//   SAM_GOV_API_KEY            (for SAM.gov leg; without it only SBIR.gov runs)
-//   WAYPOINT_ENV               set to "demo" to disable in demo environment
+//   SAM_GOV_API_KEY   — enables SAM.gov BAA leg
+//   WAYPOINT_ENV      — set "demo" to disable
 
 // ---------------------------------------------------------------------------
-// Tech profile — keywords per topic area
+// Tech profile
 // ---------------------------------------------------------------------------
 const TECH_PROFILE = [
   {
     label: 'HE DE Lasers',
     keywords: [
-      'high energy laser', 'high-energy laser', 'HEL', 'directed energy',
-      'laser weapon', 'laser lethality', 'beam control', 'laser system',
-      'high power laser', 'kilowatt laser', 'megawatt laser', 'DEW',
-      'directed energy weapon',
+      'high energy laser', 'high-energy laser', 'hel system', 'directed energy',
+      'laser weapon', 'laser lethality', 'beam control', 'high power laser',
+      'kilowatt laser', 'megawatt laser', 'dew', 'directed energy weapon',
+      'laser platform', 'laser engagement', 'laser scaling',
     ],
   },
   {
     label: 'SDA',
     keywords: [
-      'space domain awareness', 'SDA', 'space situational awareness', 'SSA',
+      'space domain awareness', 'space situational awareness', 'ssa',
       'space object tracking', 'space surveillance', 'debris tracking',
-      'conjunction assessment', 'resident space object', 'RSO',
-      'space traffic management', 'STM', 'space fence',
+      'conjunction assessment', 'resident space object', 'rso',
+      'space traffic management', 'space fence', 'space domain',
+      'on-orbit tracking', 'satellite tracking',
     ],
   },
   {
@@ -48,36 +50,20 @@ const TECH_PROFILE = [
       'power beaming', 'wireless power transmission', 'laser power beaming',
       'energy beaming', 'beamed energy', 'space solar power',
       'microwave power transmission', 'wireless energy transfer',
-      'power-beaming', 'in-space power',
+      'in-space power', 'power-beaming', 'beamed power',
     ],
   },
   {
     label: 'Emergency Comms',
     keywords: [
       'emergency communications', 'emergency comms', 'resilient communications',
-      'contested communications', 'denied communications', 'PACE plan',
+      'contested communications', 'denied communications',
       'survivable communications', 'backup communications',
-      'tactical satellite', 'SATCOM on the move', 'LEO communications',
+      'tactical satellite', 'satcom on the move', 'leo communications',
       'low earth orbit communications', 'mesh communications',
+      'communications denied', 'comms resilience',
     ],
   },
-];
-
-const TARGET_AGENCIES = [
-  'DOD', 'DOD/AF', 'DOD/ARMY', 'DOD/DARPA', 'DOD/MDA', 'DOD/NRO',
-  'DOD/NAVY', 'DOD/SOCOM', 'DOD/OSD', 'DOD/DIA',
-  'NASA',
-  'NRO', 'DARPA', 'AFRL', 'MDA', 'Space Force', 'USSF',
-];
-
-// SBIR.gov abbreviations for agency filter
-const SBIR_AGENCY_CODES = ['DOD', 'NASA'];
-
-// SAM.gov agency names to search
-const SAM_AGENCIES = [
-  'Department of Defense',
-  'National Aeronautics and Space Administration',
-  'Defense Advanced Research Projects Agency',
 ];
 
 // ---------------------------------------------------------------------------
@@ -87,140 +73,203 @@ function supaConfig() {
   const url = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
            || process.env.SUPABASE_ANON_KEY
-           || process.env.SUPABASE_KEY
-           || '';
+           || process.env.SUPABASE_KEY || '';
   if (!url || !key) throw new Error('Supabase env vars not set');
   return { url, key };
 }
-
 async function supaRequest(method, path, body, opts = {}) {
   const { url, key } = supaConfig();
-  const headers = {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    'Content-Type': 'application/json',
-  };
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
   if (opts.prefer) headers.Prefer = opts.prefer;
   const res = await fetch(`${url}/rest/v1/${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+    method, headers, body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Supabase ${method} ${path} ${res.status}: ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : null;
 }
-
 const supa = {
-  select: (table, qs) => supaRequest('GET', `${table}?${qs}`),
-  insert: (table, row) => supaRequest('POST', table, row, { prefer: 'return=representation' }),
+  select: (t, qs) => supaRequest('GET', `${t}?${qs}`),
+  insert: (t, row) => supaRequest('POST', t, row, { prefer: 'return=representation' }),
 };
 
 // ---------------------------------------------------------------------------
-// Scoring
+// Scoring — returns matched topic labels or empty array (= no match)
 // ---------------------------------------------------------------------------
-function scoreOpportunity(title, abstract) {
-  const haystack = ((title || '') + ' ' + (abstract || '')).toLowerCase();
+function scoreOpportunity(title, description) {
+  const hay = ((title || '') + ' ' + (description || '')).toLowerCase();
   const matched = [];
   for (const topic of TECH_PROFILE) {
     for (const kw of topic.keywords) {
-      if (haystack.includes(kw.toLowerCase())) {
+      if (hay.includes(kw.toLowerCase())) {
         if (!matched.find(t => t.label === topic.label)) matched.push(topic);
         break;
       }
     }
   }
-  return matched; // array of matched topic objects; empty = no match
+  return matched;
 }
 
 // ---------------------------------------------------------------------------
-// SBIR.gov scan
+// Source 1: DoD SBIR/STTR Innovation Portal
+// API: https://www.dodsbirsttr.mil/topics-app/api/public/topics/
+// Returns paginated JSON with content[] array
 // ---------------------------------------------------------------------------
-async function scanSbirGov() {
+async function scanDodSbir() {
   const results = [];
-  // SBIR.gov public API — no auth required
-  // Searches all open solicitations, filters client-side by topic
-  const url = 'https://api.sbir.gov/public/api/solicitations?open=true&rows=200&start=0';
+  const PAGE_SIZE = 100;
+  let page = 0;
+  let totalPages = 1;
+
+  // Topic-code prefix check: SDA = 'sda' in title, DE = 'directed energy' etc.
+  // We pull all open topics (no keyword filter) and score locally to avoid
+  // missing anything due to API keyword mismatch.
+
+  while (page < totalPages && page < 5) { // cap at 500 topics to avoid runaway
+    const params = new URLSearchParams({
+      page: String(page),
+      size: String(PAGE_SIZE),
+      // Only open solicitations
+      'solicitation.status': 'OPEN',
+    });
+    let data;
+    try {
+      const res = await fetch(
+        `https://www.dodsbirsttr.mil/topics-app/api/public/topics/?${params}`,
+        {
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        }
+      );
+      if (!res.ok) {
+        console.warn('DoD SBIR topics API returned', res.status, 'page', page);
+        break;
+      }
+      data = await res.json();
+    } catch (e) {
+      console.warn('DoD SBIR topics fetch failed page', page, ':', e.message);
+      break;
+    }
+
+    const items = data.content || data.topics || (Array.isArray(data) ? data : []);
+    totalPages = data.totalPages || 1;
+
+    for (const t of items) {
+      const title       = t.title || t.topicTitle || '';
+      const description = t.description || t.objective || t.abstract || t.topicDescription || '';
+      const topicCode   = t.topicCode || t.code || t.solicitation_number || '';
+      const branch      = t.branch || t.agency || t.component || '';
+      const program     = t.program || 'SBIR';
+      const openDate    = t.openDate || t.open_date || (t.solicitation && t.solicitation.openDate) || '';
+      const closeDate   = t.closeDate || t.close_date || (t.solicitation && t.solicitation.closeDate) || '';
+      const link        = topicCode
+        ? `https://www.dodsbirsttr.mil/topics-app/topic-details/${encodeURIComponent(topicCode)}`
+        : '';
+
+      const topics = scoreOpportunity(title, description);
+      if (!topics.length) continue;
+
+      results.push({
+        source: 'dodsbirsttr.mil',
+        external_id: topicCode || link,
+        title: topicCode ? `[${topicCode}] ${title}` : title,
+        agency: branch || 'DoD',
+        type: program,
+        open_date: openDate ? String(openDate).slice(0, 10) : null,
+        due_date:  closeDate ? String(closeDate).slice(0, 10) : null,
+        link,
+        topics,
+        abstract: description.slice(0, 500),
+      });
+    }
+    page++;
+    if (items.length < PAGE_SIZE) break; // last page
+  }
+
+  console.log(`DoD SBIR: scanned pages 0-${page}, found ${results.length} matches`);
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Source 2: NASA SBIR portal
+// API: https://sbir.nasa.gov/solicitations
+// ---------------------------------------------------------------------------
+async function scanNasaSbir() {
+  const results = [];
   let data;
   try {
-    const res = await fetch(url, {
+    const res = await fetch('https://sbir.nasa.gov/api/solicitations?open=true&rows=100', {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
     });
     if (!res.ok) {
-      console.warn('SBIR.gov API returned', res.status);
-      return [];
+      // Try alternate endpoint
+      const res2 = await fetch('https://sbir.nasa.gov/solicitations.json?status=open', {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res2.ok) {
+        console.warn('NASA SBIR API not reachable, status', res.status);
+        return [];
+      }
+      data = await res2.json();
+    } else {
+      data = await res.json();
     }
-    data = await res.json();
   } catch (e) {
-    console.warn('SBIR.gov fetch failed:', e.message);
+    console.warn('NASA SBIR fetch failed:', e.message);
     return [];
   }
 
-  const solicitations = Array.isArray(data) ? data
+  const items = Array.isArray(data) ? data
     : (data && Array.isArray(data.solicitations)) ? data.solicitations
     : (data && Array.isArray(data.results)) ? data.results
     : [];
 
-  for (const s of solicitations) {
-    const title    = s.solicitation_title || s.title || '';
-    const abstract = s.program_description || s.description || s.abstract || '';
-    const agency   = s.agency || s.branch || '';
-    const open     = s.open_date || s.solicitation_open_date || '';
-    const close    = s.close_date || s.solicitation_close_date || '';
-    const link     = s.solicitation_agency_url || s.url
-                  || (s.solicitation_number ? `https://www.sbir.gov/solicitations/${s.solicitation_number}` : '');
-    const type     = s.program || 'SBIR'; // SBIR / STTR
-
-    // Only consider target agencies
-    const agencyUp = (agency || '').toUpperCase();
-    const isTarget = SBIR_AGENCY_CODES.some(a => agencyUp.includes(a))
-                  || TARGET_AGENCIES.some(a => agencyUp.includes(a.toUpperCase()));
-    if (!isTarget && agency) continue;
+  for (const s of items) {
+    const title    = s.title || s.solicitation_title || '';
+    const abstract = s.description || s.abstract || '';
+    const code     = s.solicitation_number || s.number || s.id || '';
+    const link     = s.url || s.link || (code ? `https://sbir.nasa.gov/solicitations/${code}` : '');
 
     const topics = scoreOpportunity(title, abstract);
     if (!topics.length) continue;
 
     results.push({
-      source: 'sbir.gov',
-      external_id: s.solicitation_number || s.id || link,
-      title,
-      agency,
-      type,
-      open_date: open ? open.slice(0, 10) : null,
-      due_date: close ? close.slice(0, 10) : null,
+      source: 'sbir.nasa.gov',
+      external_id: String(code || link),
+      title: code ? `[${code}] ${title}` : title,
+      agency: 'NASA',
+      type: s.program || 'SBIR',
+      open_date: (s.open_date || s.openDate || '').slice(0, 10) || null,
+      due_date:  (s.close_date || s.closeDate || '').slice(0, 10) || null,
       link,
       topics,
       abstract: abstract.slice(0, 500),
     });
   }
+  console.log(`NASA SBIR: found ${results.length} matches`);
   return results;
 }
 
 // ---------------------------------------------------------------------------
-// SAM.gov scan
+// Source 3: SAM.gov (BAAs + solicitations — requires SAM_GOV_API_KEY)
 // ---------------------------------------------------------------------------
 async function scanSamGov() {
-  if (!process.env.SAM_GOV_API_KEY) return [];
+  if (!process.env.SAM_GOV_API_KEY) {
+    console.log('SAM.gov skipped: no SAM_GOV_API_KEY');
+    return [];
+  }
   const results = [];
-
-  // Build date window: last 90 days → today
-  const now = new Date();
+  const now  = new Date();
   const from = new Date(now.getTime() - 90 * 86400000);
   const fmtMdy = d => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}/${d.getFullYear()}`;
 
-  // SAM.gov opportunity types relevant for R&D: BAA (broad agency announcement),
-  // SBIR solicitations, Combined Synopsis/Solicitation
-  const oppTypes = ['r', 'k', 'o']; // r=Sources Sought, k=Combined, o=Solicitation
-
-  // Search each keyword cluster to avoid missing narrow matches
   const SEARCH_TERMS = [
     'directed energy laser',
     'space domain awareness',
     'power beaming',
     'emergency communications satellite',
-    'high energy laser',
-    'SBIR space',
+    'high energy laser space',
+    'SBIR directed energy',
+    'SBIR space domain',
   ];
 
   const seen = new Set();
@@ -234,10 +283,8 @@ async function scanSamGov() {
     });
     let data;
     try {
-      const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`, {
-        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined,
-      });
-      if (!res.ok) continue;
+      const res = await fetch(`https://api.sam.gov/opportunities/v2/search?${params}`);
+      if (!res.ok) { console.warn('SAM.gov', res.status, 'for term:', term); continue; }
       data = await res.json();
     } catch (e) {
       console.warn('SAM.gov fetch failed for term', term, ':', e.message);
@@ -250,27 +297,25 @@ async function scanSamGov() {
 
       const title    = opp.title || '';
       const abstract = opp.description || '';
-      const agency   = opp.fullParentPathName || opp.organizationName || '';
-      const link     = opp.uiLink || `https://sam.gov/opp/${noticeId}/view`;
-
-      const topics = scoreOpportunity(title, abstract);
+      const topics   = scoreOpportunity(title, abstract);
       if (!topics.length) continue;
 
       results.push({
         source: 'sam.gov',
         external_id: noticeId,
         title,
-        agency,
+        agency: opp.fullParentPathName || opp.organizationName || 'DoD',
         type: opp.type || 'Solicitation',
         open_date: opp.postedDate ? opp.postedDate.slice(0, 10) : null,
-        due_date: opp.responseDeadLine ? opp.responseDeadLine.slice(0, 10) : null,
-        link,
+        due_date:  opp.responseDeadLine ? opp.responseDeadLine.slice(0, 10) : null,
+        link: opp.uiLink || `https://sam.gov/opp/${noticeId}/view`,
         topics,
         abstract: abstract.slice(0, 500),
         pocs: (opp.pointOfContact || []).map(p => p.email).filter(Boolean),
       });
     }
   }
+  console.log(`SAM.gov: found ${results.length} matches`);
   return results;
 }
 
@@ -280,38 +325,38 @@ async function scanSamGov() {
 async function deduplicateAndInsert(opportunities) {
   if (!opportunities.length) return { inserted: 0, skipped: 0 };
 
-  // Fetch existing solicitation links so we can deduplicate
   let existing = [];
   try {
-    existing = await supa.select('solicitations', 'select=link,title&limit=1000');
+    existing = await supa.select('solicitations', 'select=link,title&limit=2000');
   } catch (e) {
-    console.warn('Could not fetch existing solicitations for dedup:', e.message);
+    console.warn('Could not fetch existing solicitations:', e.message);
   }
-  const existingLinks = new Set((existing || []).map(s => (s.link || '').trim()).filter(Boolean));
+  const existingLinks  = new Set((existing || []).map(s => (s.link  || '').trim()).filter(Boolean));
   const existingTitles = new Set((existing || []).map(s => (s.title || '').trim().toLowerCase()).filter(Boolean));
 
   let inserted = 0, skipped = 0;
   for (const opp of opportunities) {
-    // Deduplicate by link (primary) or exact title (fallback)
-    if (opp.link && existingLinks.has(opp.link.trim())) { skipped++; continue; }
-    if (existingTitles.has((opp.title || '').trim().toLowerCase())) { skipped++; continue; }
+    if (opp.link  && existingLinks.has(opp.link.trim()))                  { skipped++; continue; }
+    if (existingTitles.has((opp.title || '').trim().toLowerCase()))        { skipped++; continue; }
 
     const topicLabel = opp.topics.map(t => t.label).join(', ');
+    const noteLines = [
+      `Source: ${opp.source}`,
+      `Topic match: ${topicLabel}`,
+      opp.abstract ? `Summary: ${opp.abstract}` : null,
+      opp.pocs && opp.pocs.length ? `POC emails: ${opp.pocs.join(', ')}` : null,
+    ].filter(Boolean);
+
     const row = {
-      title: opp.title,
-      status: 'Identified',
-      type: opp.type || 'SBIR',
-      link: opp.link || null,
-      org: opp.agency || null,
-      notes: [
-        `Source: ${opp.source}`,
-        `Topic match: ${topicLabel}`,
-        opp.abstract ? `Summary: ${opp.abstract}` : null,
-        opp.pocs && opp.pocs.length ? `POC emails: ${opp.pocs.join(', ')}` : null,
-      ].filter(Boolean).join('\n'),
-      topic: topicLabel,
+      title:     opp.title,
+      status:    'Identified',
+      type:      opp.type || 'SBIR',
+      link:      opp.link || null,
+      org:       opp.agency || null,
+      notes:     noteLines.join('\n'),
+      topic:     topicLabel,
       open_date: opp.open_date || null,
-      due_date: opp.due_date || null,
+      due_date:  opp.due_date  || null,
     };
 
     try {
@@ -320,59 +365,53 @@ async function deduplicateAndInsert(opportunities) {
       existingTitles.add((opp.title || '').toLowerCase());
       inserted++;
     } catch (e) {
-      console.warn('Failed to insert opportunity:', opp.title, e.message);
+      console.warn('Insert failed for:', opp.title, e.message);
     }
   }
   return { inserted, skipped };
 }
 
 // ---------------------------------------------------------------------------
-// Core scan runner (AWS-portable — no Netlify deps)
+// Core runner (AWS-portable)
 // ---------------------------------------------------------------------------
 async function runScan() {
   const start = Date.now();
-  const [sbirResults, samResults] = await Promise.all([
-    scanSbirGov(),
+  const [dodResults, nasaResults, samResults] = await Promise.all([
+    scanDodSbir(),
+    scanNasaSbir(),
     scanSamGov(),
   ]);
-  const all = [...sbirResults, ...samResults];
+  const all = [...dodResults, ...nasaResults, ...samResults];
   const { inserted, skipped } = await deduplicateAndInsert(all);
-  return {
-    scanned: all.length,
+  const result = {
+    scanned:      all.length,
     inserted,
     skipped,
-    sbir_matches: sbirResults.length,
-    sam_matches: samResults.length,
-    elapsed_ms: Date.now() - start,
-    ran_at: new Date().toISOString(),
+    dod_matches:  dodResults.length,
+    nasa_matches: nasaResults.length,
+    sam_matches:  samResults.length,
+    elapsed_ms:   Date.now() - start,
+    ran_at:       new Date().toISOString(),
   };
+  console.log('opportunity-scan complete', JSON.stringify(result));
+  return result;
 }
 
 // ---------------------------------------------------------------------------
-// Netlify handler — scheduled + manual POST
+// Netlify handler
 // ---------------------------------------------------------------------------
 exports.handler = async (event) => {
-  // Demo guard
   if ((process.env.WAYPOINT_ENV || '').toLowerCase() === 'demo') {
     return { statusCode: 404, body: JSON.stringify({ error: 'not_found' }) };
   }
-
-  const isScheduled = event.httpMethod === undefined || event.httpMethod === null;
-  const isPost = event.httpMethod === 'POST';
-  const isGet  = event.httpMethod === 'GET';
-
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: corsHeaders(), body: '' };
   }
-
-  // Only allow POST (manual) or scheduled invocations
-  if (!isScheduled && !isPost && !isGet) {
+  if (event.httpMethod && event.httpMethod !== 'POST' && event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'POST or scheduled only' };
   }
-
   try {
     const result = await runScan();
-    console.log('opportunity-scan complete', JSON.stringify(result));
     return {
       statusCode: 200,
       headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
